@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Report": {
+      "title": "Laporan Kerusakan Aksesibilitas",
+      "description": "Data pelaporan kerusakan fasilitas trotoar dan difabel warga Kebumen",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "placeName": { "type": "string" },
+        "address": { "type": "string" },
+        "district": { "type": "string" },
+        "facilityCategory": { "type": "string" },
+        "obstacleType": { "type": "string" },
+        "severity": { "type": "string" },
+        "severityLabel": { "type": "string" },
+        "description": { "type": "string" },
+        "photoBefore": { "type": "string" },
+        "photoDuring": { "type": "string" },
+        "photoAfter": { "type": "string" },
+        "status": { "type": "string" },
+        "statusLabel": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "placeName", "address", "facilityCategory", "obstacleType", "severity", "status"]
+    },
+    "SPKTask": {
+      "title": "Surat Perintah Kerja (SPK)",
+      "description": "Disposisi tugas operasional lapangan TRC Dinas PUPR Kebumen",
+      "type": "object",
+      "properties": {
+        "spkNumber": { "type": "string" },
+        "reportId": { "type": "string" },
+        "teamName": { "type": "string" },
+        "leadOfficer": { "type": "string" },
+        "vehicle": { "type": "string" },
+        "slaHours": { "type": "number" },
+        "progressPercent": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["spkNumber", "reportId", "teamName", "slaHours", "status"]
+    },
+    "Cluster": {
+      "title": "Klaster Geofencing",
+      "description": "Agregasi spasial laporan warga berdekatan untuk penanganan efisien",
+      "type": "object",
+      "properties": {
+        "clusterId": { "type": "string" },
+        "name": { "type": "string" },
+        "district": { "type": "string" },
+        "radius": { "type": "number" },
+        "reportsCount": { "type": "number" },
+        "sawBoost": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["clusterId", "name", "radius", "reportsCount", "status"]
+    }
+  },
+  "firestore": {
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Koleksi publik laporan kerusakan fasilitas trotoar"
+    },
+    "/spk_tasks/{spkId}": {
+      "schema": { "$ref": "#/entities/SPKTask" },
+      "description": "Koleksi tugas lapangan TRC Dinas PUPR"
+    },
+    "/clusters/{clusterId}": {
+      "schema": { "$ref": "#/entities/Cluster" },
+      "description": "Koleksi klaster duplikasi geofencing spasial"
+    }
+  }
+}

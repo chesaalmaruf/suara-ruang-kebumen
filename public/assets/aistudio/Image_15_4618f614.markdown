@@ -1,0 +1,242 @@
+---
+name: Civic Access Kebumen
+colors:
+  surface: '#faf8ff'
+  surface-dim: '#d2d9f4'
+  surface-bright: '#faf8ff'
+  surface-container-lowest: '#ffffff'
+  surface-container-low: '#f2f3ff'
+  surface-container: '#eaedff'
+  surface-container-high: '#e2e7ff'
+  surface-container-highest: '#dae2fd'
+  on-surface: '#131b2e'
+  on-surface-variant: '#42474f'
+  inverse-surface: '#283044'
+  inverse-on-surface: '#eef0ff'
+  outline: '#727780'
+  outline-variant: '#c2c7d1'
+  surface-tint: '#2d6197'
+  primary: '#00355f'
+  on-primary: '#ffffff'
+  primary-container: '#0f4c81'
+  on-primary-container: '#8ebdf9'
+  inverse-primary: '#a0c9ff'
+  secondary: '#006496'
+  on-secondary: '#ffffff'
+  secondary-container: '#7fc5fd'
+  on-secondary-container: '#00517b'
+  tertiary: '#003d0b'
+  on-tertiary: '#ffffff'
+  tertiary-container: '#005713'
+  on-tertiary-container: '#7ccd77'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
+  error-container: '#ffdad6'
+  on-error-container: '#93000a'
+  primary-fixed: '#d2e4ff'
+  primary-fixed-dim: '#a0c9ff'
+  on-primary-fixed: '#001c37'
+  on-primary-fixed-variant: '#07497d'
+  secondary-fixed: '#cce5ff'
+  secondary-fixed-dim: '#90cdff'
+  on-secondary-fixed: '#001e31'
+  on-secondary-fixed-variant: '#004b72'
+  tertiary-fixed: '#a3f69c'
+  tertiary-fixed-dim: '#88d982'
+  on-tertiary-fixed: '#002204'
+  on-tertiary-fixed-variant: '#005312'
+  background: '#faf8ff'
+  on-background: '#131b2e'
+  surface-variant: '#dae2fd'
+typography:
+  display-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 3.5rem
+    fontWeight: '800'
+    lineHeight: 4.25rem
+    letterSpacing: -0.025em
+  display-lg-mobile:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 2.25rem
+    fontWeight: '800'
+    lineHeight: 2.75rem
+    letterSpacing: -0.02em
+  headline-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 2rem
+    fontWeight: '700'
+    lineHeight: 2.5rem
+    letterSpacing: -0.02em
+  headline-lg-mobile:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.5rem
+    fontWeight: '700'
+    lineHeight: 2rem
+    letterSpacing: -0.015em
+  headline-md:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.375rem
+    fontWeight: '600'
+    lineHeight: 1.875rem
+    letterSpacing: -0.01em
+  headline-sm:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.125rem
+    fontWeight: '600'
+    lineHeight: 1.625rem
+  body-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.125rem
+    fontWeight: '400'
+    lineHeight: 1.75rem
+  body-md:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1rem
+    fontWeight: '400'
+    lineHeight: 1.625rem
+  body-sm:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.875rem
+    fontWeight: '400'
+    lineHeight: 1.375rem
+  label-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1rem
+    fontWeight: '600'
+    lineHeight: 1.25rem
+    letterSpacing: 0.01em
+  label-md:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.875rem
+    fontWeight: '600'
+    lineHeight: 1.125rem
+    letterSpacing: 0.02em
+  label-sm:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.75rem
+    fontWeight: '700'
+    lineHeight: 1rem
+    letterSpacing: 0.04em
+rounded:
+  sm: 0.25rem
+  DEFAULT: 0.5rem
+  md: 0.75rem
+  lg: 1rem
+  xl: 1.5rem
+  full: 9999px
+spacing:
+  gutter: 1.5rem
+  gutter-sm: 1rem
+  gutter-lg: 2rem
+  margin: 1.5rem
+  margin-sm: 1rem
+  margin-lg: 3rem
+  space-xs: 0.25rem
+  space-sm: 0.5rem
+  space-md: 1rem
+  space-lg: 1.5rem
+  space-xl: 2.5rem
+---
+
+## Brand & Style
+
+This design system governs the civic infrastructure and accessibility auditing platform for Kabupaten Kebumen (Sistem Lapor Fasilitas Aksesibilitas & Trotoar Disabilitas berbasis Simple Additive Weighting). 
+
+### Personality & Emotional Response
+The platform conveys public trust, institutional responsiveness, civic dignity, and uncompromising inclusivity. Citizens—including persons with motor, visual, and cognitive disabilities—and municipal civil servants interact with the same core system. It inspires confidence through transparency, immediate legibility, and high-utility design, stripping away ornamental excess in favor of crisp structural clarity and tactile feedback.
+
+### Visual Style
+The design style blends **Corporate Modern** with **Tactile Utility**:
+- Crisp, hyper-legible typographic scale with intentional optical rhythm.
+- Physical affordances: deliberate tactile focus rings, distinct elevation planes for spatial orientation, and unyielding adherence to WCAG AAA contrast metrics.
+- Purpose-driven functional color zones designed to communicate priority and multi-criteria SAW (Simple Additive Weighting) analysis scores at a single glance.
+
+## Colors
+
+The palette grounds itself in authoritative civic blues, balanced by unambiguous semantic indicator tones engineered to meet strict WCAG AAA luminance requirements.
+
+### Color Tokens & Semantic Roles
+- **Primary (`#0F4C81`)**: Kebumen Deep Civic Blue. Dictates major structural surfaces, top-level navigation headers, primary action CTAs, and active navigational indicators.
+- **Secondary (`#006699`)**: Maritime Blue. Drives interactive hover states, secondary actions, informational filters, and interactive map clusters.
+- **Tertiary (`#2E7D32`)**: Resolved Emerald. Exclusively denotes verified repairs, operational accessibility ramps, completed audits, and passing SAW benchmark thresholds.
+- **Neutral Primary (`#0F172A`)**: Slate 900. High-density carbon black for primary text, structural icons, and crisp border boundaries, maintaining a minimum 12.6:1 contrast ratio against base backgrounds.
+- **Neutral Canvas (`#F8FAFC`)**: Light slate foundation preventing screen glare during direct daylight field reporting.
+- **Surface Elevation (`#FFFFFF`)**: Pure card base for interactive and data modules.
+- **Status Urgent / Critical (`#D32F2F`)**: Crimson Red. Reserved for impassable sidewalk hazards, blocked tactile paving, open ditches, and critical SAW repair priorities.
+- **Status Pending / Warning (`#B25E00`)**: Deep Accessible Amber (tuned from `#ED6C02` for AAA background compliance). Designates ongoing inspections, partial blockage, and moderate priority repair queues.
+- **Accessible Focus Ring (`#0284C7`)**: High-visibility celestial blue with 3px offset, dedicated strictly to keyboard and screen-reader navigable nodes.
+
+## Typography
+
+The typography uses **Plus Jakarta Sans** across all hierarchies to ensure high geometric legibility, wide open counters, and unambiguous letterforms (essential for users with cognitive or visual impairments reading on mobile devices in outdoor field conditions).
+
+### Rules for Application
+- **Scale Compression on Mobile**: Headlines larger than 24px (`headline-lg`, `display-lg`) drop to viewport-specific tokens (`-mobile`) on viewports under 768px wide to eliminate horizontal overflow and awkward line breaks.
+- **Numbers & Metrics**: Data indicators for SAW ranking calculations, coordinates, and report IDs use tabular figure alignment (`font-variant-numeric: tabular-nums`) to preserve scannability across civic auditing tables.
+- **WCAG Text Sizing**: Text never renders beneath `0.75rem` (12px). All micro-labels (`label-sm`) require `700` weight to sustain optical weight against colored status badges.
+
+## Layout & Spacing
+
+The layout model uses a **12-column adaptive fluid grid** anchored by strict minimum safe-margin logic to guarantee thumb accessibility and easy field navigation.
+
+### Grid & Breakpoints
+- **Mobile (< 768px)**: 4-column fluid grid. Outer margin: `1rem` (`margin-sm`). Gutter: `1rem` (`gutter-sm`). Full-width single-column stacking for inspection cards and submission steps.
+- **Tablet (768px - 1024px)**: 8-column fluid grid. Outer margin: `1.5rem` (`margin`). Gutter: `1.5rem` (`gutter`). Two-column layout pairing map view with tabular incident logs.
+- **Desktop (> 1024px)**: 12-column fixed-max grid (max container width 1440px). Outer margin: `3rem` (`margin-lg`). Gutter: `2rem` (`gutter-lg`). Split views: 7-column analytical map and live report stream alongside a 5-column SAW matrix evaluation drawer.
+
+### Spacing Principles
+- Minimum interactive touch-target dimensions are locked to a non-negotiable **48px x 48px** bounding box, regardless of visual icon size.
+- Multi-step report forms enforce vertical rhythm via `space-xl` (`2.5rem`) between functional fieldsets and `space-md` (`1rem`) between related inputs.
+
+## Elevation & Depth
+
+Visual hierarchy uses **tonal layer separation paired with low-contrast structural boundaries** rather than heavy blurred shadows. This prevents cognitive overload and maintains clarity under varying screen brightness levels.
+
+### Surface Tiers
+- **Tier 0 (Backdrop)**: `#F8FAFC`. Base canvas for municipal dashboard grids.
+- **Tier 1 (Resting Cards & Containers)**: `#FFFFFF` surfaced with an explicit 1px border of `#E2E8F0` and an ambient shadow: `0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04)`.
+- **Tier 2 (Interactive Floating / Hover / Selected State)**: Raised cards, active report selection in the SAW list, and floating map toolbars receive: `0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.06)` combined with a 1.5px border tint of `#006699`.
+- **Tier 3 (Modals, Citizen Report Drawers & Overlays)**: `#FFFFFF` with `0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08)`, framed against a 50% opacity neutral wash (`#0F172A80`).
+
+### Accessibility Borders
+Every elevated card, alert, and panel uses a minimum 1px boundary (`#CBD5E1` or darker) to preserve edge contrast for users with low contrast sensitivity.
+
+## Shapes
+
+The design system employs **Roundedness Level 2** (`0.5rem` / 8px default radius).
+
+### Geometric Rationale
+- **Default (0.5rem / 8px)**: Standard buttons, text input fields, incident list items, filter chips, and image preview containers. Conveys structural rigor while softening sharp industrial edges.
+- **Rounded-lg (1rem / 16px)**: Municipal dashboard summary cards, SAW formula weight matrices, citizen report submission dialogs, and modal dialogs.
+- **Rounded-xl (1.5rem / 24px)**: Field-action floating button panels and emergency reporting quick-toggles.
+- **Pill (Full Radius)**: Strict utility tags, status badges (`Emergency`, `Verifikasi`, `Selesai`), and SAW coefficient metrics.
+
+## Components
+
+### Buttons & Interactive Controls
+- **Primary Action (Lapor Fasilitas / Simpan Analisis)**: Background `#0F4C81`, foreground `#FFFFFF`, border-radius `0.5rem`, height `3rem` (48px minimum). Hover: `#006699`. Focus: 3px solid focus ring in `#0284C7` with a 2px offset.
+- **Destructive / Emergency Action**: Background `#D32F2F`, foreground `#FFFFFF`. Used for unpassable sidewalk hazards and urgent accessibility denials.
+- **Secondary / Filter Button**: Background `#FFFFFF`, border `1.5px solid #0F4C81`, foreground `#0F4C81`. Hover: Background `#F0F7FF`.
+- **Icon Buttons**: Centered in a minimum `48px x 48px` hit region with mandatory screen-reader accessible labeling (`aria-label`).
+
+### Status Badges & Chips
+- Badges use a double-indicator rule (color + text label + icon) to avoid relying on color alone for accessibility.
+- **Kritis / Prioritas Tinggi (High SAW Score)**: Background `#FEE2E2`, text `#991B1B`, border `1px solid #F87171`.
+- **Dalam Proses Verifikasi (Under Review)**: Background `#FEF3C7`, text `#92400E`, border `1px solid #FBBF24`.
+- **Terselesaikan (Resolved)**: Background `#DCFCE7`, text `#166534`, border `1px solid #86EFAC`.
+
+### Multi-Step Civic Forms
+- Step markers display explicit numerical sequence and textual labels (e.g., `Langkah 1 dari 4: Lokasi Trotoar`).
+- Input fields: Height 48px, background `#FFFFFF`, border `1.5px solid #94A3B8`, text `#0F172A`, font size `1rem`. Active/focused fields shift border to `2px solid #0F4C81`.
+- Mandatory inline helper text sits below inputs at `0.875rem` (`body-sm`) in `#475569`. Error states trigger an immediate inline error message paired with an exclamation icon and a `#D32F2F` border.
+
+### Checkboxes, Radio Groups & Accessible Sliders
+- Checkbox/Radio size: Minimum `24px x 24px` target within a `48px` clickable container label.
+- Radio buttons for SAW weight criteria (e.g., Tingkat Kerusakan: Ringan, Sedang, Parah) provide full-card selection targets with clear visual selection borders (`2px solid #0F4C81` with background `#F0F7FF`).
+
+### Incident & Priority Cards
+- Structurally segregated into:
+  1. Header: Report ID and timestamp with high-contrast badge.
+  2. Body: Trotoar location, issue type (e.g., "Guiding block putus / terhalang tiang"), and attached geotagged evidence thumbnail.
+  3. Footer: Simple Additive Weighting score display (e.g., `Skor SAW: 0.887 - Prioritas 1`) with quick-action municipal dispatch buttons.
+- Minimum card surface padding: `space-lg` (`1.5rem`).

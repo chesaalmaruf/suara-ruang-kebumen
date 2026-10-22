@@ -1,0 +1,6 @@
+{
+  "name": "SUARA RUANG: Lapor Akses Kebumen",
+  "description": "Sistem Pemetaan Hambatan Aksesibilitas Ruang Publik di Kabupaten Kebumen berbasis Simple Additive Weighting (SAW).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
