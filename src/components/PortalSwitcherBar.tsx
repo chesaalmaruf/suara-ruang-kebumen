@@ -12,17 +12,19 @@ export const PortalSwitcherBar: React.FC<PortalSwitcherBarProps> = ({
   onSwitchPortal,
   dbStatus,
 }) => {
-  const citizenUrl = 'suararuang.kebumenkab.go.id';
-  const adminUrl = 'admin-suararuang.kebumenkab.go.id/admin';
-
   const isConnected = dbStatus?.connected;
+  const currentPath = currentPortal === 'citizen' ? '/' : '/admin';
+  const currentHost =
+    typeof window !== 'undefined'
+      ? `${window.location.host}${currentPath}`
+      : `suara-ruang-kebumen.vercel.app${currentPath}`;
 
   return (
     <div className="bg-[#131b2e] text-white px-3 py-1.5 flex items-center justify-between text-[11px] border-b border-white/10 z-50">
       <div className="flex items-center gap-2 min-w-0">
         <span className="w-2 h-2 rounded-full bg-[#a3f69c] animate-pulse"></span>
         <span className="font-mono text-[#a0c9ff] truncate font-semibold">
-          {currentPortal === 'citizen' ? `https://${citizenUrl}` : `https://${adminUrl}`}
+          https://{currentHost}
         </span>
 
         {/* Database Status Indicator Pill */}
@@ -48,7 +50,7 @@ export const PortalSwitcherBar: React.FC<PortalSwitcherBarProps> = ({
       <div className="flex items-center gap-1 flex-shrink-0">
         <button
           onClick={() => onSwitchPortal('citizen')}
-          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+          className={`px-2.5 py-0.5 rounded text-[10px] font-bold transition-all ${
             currentPortal === 'citizen'
               ? 'bg-[#006496] text-white shadow-xs'
               : 'text-[#a0c9ff] hover:text-white'
@@ -61,7 +63,7 @@ export const PortalSwitcherBar: React.FC<PortalSwitcherBarProps> = ({
 
         <button
           onClick={() => onSwitchPortal('admin')}
-          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+          className={`px-2.5 py-0.5 rounded text-[10px] font-bold transition-all ${
             currentPortal === 'admin'
               ? 'bg-[#ba1a1a] text-white shadow-xs'
               : 'text-[#a0c9ff] hover:text-white'

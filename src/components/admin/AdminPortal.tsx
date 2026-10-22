@@ -31,6 +31,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     'https://lh3.googleusercontent.com/aida-public/AB6AXuDjx1gIVdlsHfwiKN3iWrUqwMRQaovbWeySCK5_SvyC3CFTK-Rb-evTVDfHPB_vMoKqRuWkiQhwXwXV7Mi86UUEPJBqGKn1YumqUa0CLL88JF4_XFRVfVGwOvu3cAw0K8FoAaLiJyw7WuISUSxrg6e_M3PaYxfBafTX7RDLD_9gP_OzKvONwS4WOdeJQfc-XLNJUAcZj0bd2DWdH_tv72ao5iTAMw0bxL6zbTY9VrmNJYsFOtob_XEX'
   );
 
+  // Dynamic statistics calculated from live MongoDB reports
+  const totalActive = reports.filter(r => r.status !== 'completed').length;
+  const needVerification = reports.filter(r => r.status === 'submitted').length;
+  const criticalCount = reports.filter(
+    r => r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85)
+  ).length;
+  const inProgressCount = reports.filter(r => r.status === 'in_progress').length;
+  const completedCount = reports.filter(r => r.status === 'completed').length;
+  const moderateCount = reports.filter(
+    r => r.severity === 'moderate' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.65 && r.sawScores.totalSaw < 0.85)
+  ).length;
+  const mildCount = reports.filter(
+    r => r.severity === 'mild' || (r.sawScores?.totalSaw && r.sawScores.totalSaw < 0.65)
+  ).length;
+
+  const topReport = reports[0] || null;
+  const submittedReport = reports.find(r => r.status === 'submitted') || topReport;
+  const inProgressReport = reports.find(r => r.status === 'in_progress') || topReport;
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
@@ -140,7 +159,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </span>
             </div>
 
-            {/* 4 Metric Cards */}
+            {/* 4 Metric Cards (Dynamic Live MongoDB) */}
             <div className="grid grid-cols-2 gap-2.5">
               {/* Total Lap. Aktif */}
               <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs flex flex-col justify-between">
@@ -148,10 +167,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <span>Total Lap. Aktif</span>
                   <span className="material-symbols-outlined text-[18px] text-[#006496]">folder</span>
                 </div>
-                <span className="text-2xl font-black text-[#00355f] my-0.5">24</span>
+                <span className="text-2xl font-black text-[#00355f] my-0.5">{totalActive}</span>
                 <span className="text-[10px] text-[#006496] font-semibold flex items-center gap-1">
                   <span className="material-symbols-outlined text-[12px]">schedule</span>
-                  3 Butuh Verifikasi
+                  {needVerification} Butuh Verifikasi
                 </span>
               </div>
 
@@ -161,7 +180,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <span>Darurat / Kritis</span>
                   <span className="material-symbols-outlined text-[18px]">emergency</span>
                 </div>
-                <span className="text-2xl font-black text-[#ba1a1a] my-0.5">2 Kasus</span>
+                <span className="text-2xl font-black text-[#ba1a1a] my-0.5">{criticalCount} Kasus</span>
                 <span className="text-[10px] text-[#ba1a1a] font-semibold">
                   Menunggu Verifikasi SPK
                 </span>
@@ -176,7 +195,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <span className="text-2xl font-black text-[#006496] my-0.5">1.4 <span className="text-xs font-bold">Hari</span></span>
                 <span className="text-[10px] text-[#005713] font-bold flex items-center gap-0.5">
                   <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
-                  0.6 hr dari target
+                  Sesuai Target SLA PUPR
                 </span>
               </div>
 
@@ -189,7 +208,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <div className="space-y-1 mt-1 text-[10px]">
                   <div>
                     <div className="flex justify-between font-bold text-[#131b2e]">
-                      <span>Kebumen</span>
+                      <span>Kebumen Kota</span>
                       <span>92%</span>
                     </div>
                     <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden">
@@ -235,12 +254,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <button className="px-2.5 py-1 rounded-full bg-[#f2f3ff] text-[#131b2e]">Akses Disabilitas</button>
               </div>
 
-              {/* Urgensi Badges */}
+              {/* Urgensi Badges (Dynamic) */}
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#42474f]">
                 <span>URGENSI:</span>
-                <span className="px-2 py-0.5 rounded-md bg-[#ffdad6] text-[#ba1a1a]">Kritis (2)</span>
-                <span className="px-2 py-0.5 rounded-md bg-[#cce5ff] text-[#00517b]">Sedang (9)</span>
-                <span className="px-2 py-0.5 rounded-md bg-[#a3f69c]/50 text-[#003d0b]">Rendah (13)</span>
+                <span className="px-2 py-0.5 rounded-md bg-[#ffdad6] text-[#ba1a1a]">Kritis ({criticalCount})</span>
+                <span className="px-2 py-0.5 rounded-md bg-[#cce5ff] text-[#00517b]">Sedang ({moderateCount})</span>
+                <span className="px-2 py-0.5 rounded-md bg-[#a3f69c]/50 text-[#003d0b]">Rendah ({mildCount})</span>
               </div>
 
               {/* Live Interactive Leaflet Map */}
@@ -317,7 +336,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </h3>
                 </div>
                 <span className="bg-[#d2e4ff] text-[#001c37] text-[10px] font-bold px-2 py-0.5 rounded-md">
-                  18 Antrean
+                  {reports.length} Antrean
                 </span>
               </div>
 
@@ -331,7 +350,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       : 'text-[#42474f] hover:text-[#00355f]'
                   }`}
                 >
-                  Antrean Validasi (8)
+                  Antrean Validasi ({needVerification})
                 </button>
                 <button
                   onClick={() => setSawQueueTab('prioritas')}
@@ -341,7 +360,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       : 'text-[#42474f] hover:text-[#00355f]'
                   }`}
                 >
-                  Prioritas SAW (16)
+                  Prioritas SAW ({reports.length})
                 </button>
                 <button
                   onClick={() => setSawQueueTab('dikerjakan')}
@@ -351,139 +370,151 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       : 'text-[#42474f] hover:text-[#00355f]'
                   }`}
                 >
-                  Sedang Dikerjakan (5)
+                  Sedang Dikerjakan ({inProgressCount})
                 </button>
               </div>
 
-              {/* Laporan Masuk Belum Tervalidasi */}
-              <div className="p-3 bg-[#f2f3ff] rounded-xl space-y-2 border border-[#dae2fd]">
-                <span className="text-[10px] font-bold text-[#ba1a1a] uppercase">
-                  Laporan Masuk Belum Tervalidasi
-                </span>
-                <div className="flex gap-2.5">
-                  <div className="w-14 h-14 rounded-lg bg-[#eaedff] overflow-hidden flex-shrink-0">
-                    <img
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1Q3FRuW7Tg0DI06kWvMJ1quckUoxg3R4k5k0kGTr4qYevnGA3RtPr5joGVFSkXoHY5LFNuN-Yr6LrqSsBuVwm9ohWi8WT5X6561fXwNRc9BZWjDP3iABe_FZiR6iKH7MmV_e8xi6A0RFQ26Qk3XDuH1CekXhj1HD1LKlMr6IA0A7w1TFLE5HQu89w-AvspmfMxNhukxKfQAbvxxubobp85FFJrIoSx2PTEGzUqFbK9-FfX_Nf3UJa"
-                      alt="Trotoar Rusak"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-[11px] font-bold text-[#131b2e] truncate">
-                      Trotoar & Saluran Rusak Parah
-                    </h4>
-                    <p className="text-[10px] text-[#42474f] truncate">
-                      Jl. Tentara Pelajar (Dekat Stasiun Kebumen)
-                    </p>
-                    <span className="text-[10px] text-[#006496] font-semibold">
-                      Pelapor: Hendra (Foto Meta Terverifikasi)
+              {/* Laporan Masuk Belum Tervalidasi (Dynamic) */}
+              {submittedReport && (
+                <div className="p-3 bg-[#f2f3ff] rounded-xl space-y-2 border border-[#dae2fd]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-[#ba1a1a] uppercase">
+                      Laporan Masuk Belum Tervalidasi
+                    </span>
+                    <span className="text-[10px] text-[#00355f] font-mono font-bold">
+                      {submittedReport.id}
                     </span>
                   </div>
-                </div>
-
-                <button
-                  onClick={() => showToast('Laporan Hendra divalidasi ke antrean SAW!')}
-                  className="w-full py-1.5 bg-white text-[#00355f] border border-[#cce5ff] rounded-lg text-[11px] font-bold hover:bg-[#eaedff] flex items-center justify-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[15px]">verified</span>
-                  <span>Validasi</span>
-                </button>
-              </div>
-
-              {/* Rank #1 Card: #KBM-0911 */}
-              <div className="p-3.5 bg-white rounded-xl border-2 border-[#00355f] space-y-2.5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-mono font-bold text-[#00355f] bg-[#eaedff] px-2 py-0.5 rounded">
-                      #KBM-0911
-                    </span>
-                    <span className="text-[10px] text-[#42474f]">14 Menit lalu</span>
-                  </div>
-                  <div className="bg-[#00355f] text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                    RANK #1 • Skor V: 0.942
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-[12px] font-bold text-[#131b2e]">
-                    Ramp Trotoar Amblas Depan RSUD Dr. Soedirman
-                  </h4>
-                  <p className="text-[10px] text-[#42474f] flex items-center gap-1 mt-0.5">
-                    <span className="material-symbols-outlined text-[13px] text-[#006496]">location_on</span>
-                    Jl. Lingkar Selatan KM 2.3, Kebumen
-                  </p>
-                </div>
-
-                {/* Breakdown C1-C4 */}
-                <div className="space-y-1.5 pt-1 text-[10px] border-t border-[#eaedff]">
-                  <div className="flex justify-between items-center">
-                    <span>Rincian :</span>
-                    <span className="text-[#42474f] font-mono">Total Bobot: 1.00</span>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between font-bold text-[#ba1a1a]">
-                      <span>C1: Bahaya Keselamatan</span>
-                      <span>0.95 (Sangat Kritis)</span>
+                  <div className="flex gap-2.5">
+                    <div className="w-14 h-14 rounded-lg bg-[#eaedff] overflow-hidden flex-shrink-0">
+                      <img
+                        src={submittedReport.photoBefore}
+                        alt={submittedReport.title}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-                    <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
-                      <div className="bg-[#ba1a1a] h-full" style={{ width: '95%' }}></div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-[11px] font-bold text-[#131b2e] truncate">
+                        {submittedReport.title}
+                      </h4>
+                      <p className="text-[10px] text-[#42474f] truncate">
+                        {submittedReport.address}
+                      </p>
+                      <span className="text-[10px] text-[#006496] font-semibold">
+                        Kategori: {submittedReport.facilityCategory} • GPS Presisi
+                      </span>
                     </div>
                   </div>
 
-                  <div>
-                    <div className="flex justify-between font-bold text-[#ba1a1a]">
-                      <span>C2: Akses Difabel</span>
-                      <span>0.90 (Total Blokir)</span>
-                    </div>
-                    <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
-                      <div className="bg-[#ba1a1a] h-full" style={{ width: '90%' }}></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between font-bold text-[#00355f]">
-                      <span>C3: Kepadatan Faskes</span>
-                      <span>0.85 (Zona Padat)</span>
-                    </div>
-                    <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
-                      <div className="bg-[#00355f] h-full" style={{ width: '85%' }}></div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between font-bold text-[#006496]">
-                      <span>C4: Skala Kerusakan</span>
-                      <span>0.80 (&gt;20cm Amblas)</span>
-                    </div>
-                    <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
-                      <div className="bg-[#006496] h-full" style={{ width: '80%' }}></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={() => {
-                      onUpdateReportStatus('#KBM-2024-089', 'in_progress');
-                      showToast('SPK Elektronik PUPR berhasil diterbitkan!');
+                      onUpdateReportStatus(submittedReport.id, 'verified');
+                      showToast(`Laporan ${submittedReport.id} berhasil divalidasi ke antrean prioritas SAW!`);
                     }}
-                    className="py-2 bg-[#00355f] text-white rounded-xl text-[11px] font-bold hover:bg-[#006496] flex items-center justify-center gap-1 shadow-xs"
+                    className="w-full py-1.5 bg-white text-[#00355f] border border-[#cce5ff] rounded-lg text-[11px] font-bold hover:bg-[#eaedff] flex items-center justify-center gap-1 shadow-xs"
                   >
-                    <span className="material-symbols-outlined text-[15px]">assignment_turned_in</span>
-                    <span>Terbitkan SPK PUPR</span>
-                  </button>
-
-                  <button
-                    onClick={() => showToast('Disposisi lapangan dialihkan ke regu siaga TRC!')}
-                    className="py-2 bg-white text-[#00355f] border border-[#00355f] rounded-xl text-[11px] font-bold hover:bg-[#f2f3ff] flex items-center justify-center gap-1"
-                  >
-                    <span className="material-symbols-outlined text-[15px]">send_time_extension</span>
-                    <span>Disposisi Lapangan</span>
+                    <span className="material-symbols-outlined text-[15px]">verified</span>
+                    <span>Validasi ke Antrean SAW</span>
                   </button>
                 </div>
-              </div>
+              )}
+
+              {/* Rank #1 Card: Dynamic topReport */}
+              {topReport && (
+                <div className="p-3.5 bg-white rounded-xl border-2 border-[#00355f] space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-mono font-bold text-[#00355f] bg-[#eaedff] px-2 py-0.5 rounded">
+                        {topReport.id}
+                      </span>
+                      <span className="text-[10px] text-[#42474f]">{topReport.createdAt}</span>
+                    </div>
+                    <div className="bg-[#00355f] text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                      RANK #1 • Skor V: {topReport.sawScores.totalSaw.toFixed(3)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[12px] font-bold text-[#131b2e]">
+                      {topReport.title}
+                    </h4>
+                    <p className="text-[10px] text-[#42474f] flex items-center gap-1 mt-0.5">
+                      <span className="material-symbols-outlined text-[13px] text-[#006496]">location_on</span>
+                      {topReport.address}
+                    </p>
+                  </div>
+
+                  {/* Breakdown C1-C4 */}
+                  <div className="space-y-1.5 pt-1 text-[10px] border-t border-[#eaedff]">
+                    <div className="flex justify-between items-center">
+                      <span>Rincian Bobot Kriteria SAW:</span>
+                      <span className="text-[#42474f] font-mono">Total Bobot: 1.00</span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between font-bold text-[#ba1a1a]">
+                        <span>C1: Bahaya Keselamatan (35%)</span>
+                        <span>{topReport.sawScores.c1Safety.toFixed(2)}</span>
+                      </div>
+                      <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
+                        <div className="bg-[#ba1a1a] h-full" style={{ width: `${Math.min(100, topReport.sawScores.c1Safety * 100)}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between font-bold text-[#ba1a1a]">
+                        <span>C2: Akses Difabel (30%)</span>
+                        <span>{topReport.sawScores.c2Access.toFixed(2)}</span>
+                      </div>
+                      <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
+                        <div className="bg-[#ba1a1a] h-full" style={{ width: `${Math.min(100, topReport.sawScores.c2Access * 100)}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between font-bold text-[#00355f]">
+                        <span>C3: Pengguna Terdampak (20%)</span>
+                        <span>{topReport.sawScores.c3Users.toFixed(2)}</span>
+                      </div>
+                      <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
+                        <div className="bg-[#00355f] h-full" style={{ width: `${Math.min(100, topReport.sawScores.c3Users * 100)}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between font-bold text-[#006496]">
+                        <span>C4: Kerusakan Fisik (15%)</span>
+                        <span>{topReport.sawScores.c4Physical.toFixed(2)}</span>
+                      </div>
+                      <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden mt-0.5">
+                        <div className="bg-[#006496] h-full" style={{ width: `${Math.min(100, topReport.sawScores.c4Physical * 100)}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        onUpdateReportStatus(topReport.id, 'in_progress');
+                        showToast(`SPK Elektronik untuk tiket ${topReport.id} berhasil diterbitkan!`);
+                      }}
+                      className="py-2 bg-[#00355f] text-white rounded-xl text-[11px] font-bold hover:bg-[#006496] flex items-center justify-center gap-1 shadow-xs"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">assignment_turned_in</span>
+                      <span>Terbitkan SPK PUPR</span>
+                    </button>
+
+                    <button
+                      onClick={() => showToast(`Disposisi regu lapangan siaga dialihkan untuk ${topReport.id}!`)}
+                      className="py-2 bg-white text-[#00355f] border border-[#00355f] rounded-xl text-[11px] font-bold hover:bg-[#f2f3ff] flex items-center justify-center gap-1"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">send_time_extension</span>
+                      <span>Disposisi Lapangan</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Disposisi Tim Teknis & Publikasi (Sebelum-Sesudah) */}
@@ -533,7 +564,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   {/* Sebelum */}
                   <div className="relative h-28 rounded-xl overflow-hidden border border-[#eaedff] bg-[#eaedff]">
                     <img
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1Q3FRuW7Tg0DI06kWvMJ1quckUoxg3R4k5k0kGTr4qYevnGA3RtPr5joGVFSkXoHY5LFNuN-Yr6LrqSsBuVwm9ohWi8WT5X6561fXwNRc9BZWjDP3iABe_FZiR6iKH7MmV_e8xi6A0RFQ26Qk3XDuH1CekXhj1HD1LKlMr6IA0A7w1TFLE5HQu89w-AvspmfMxNhukxKfQAbvxxubobp85FFJrIoSx2PTEGzUqFbK9-FfX_Nf3UJa"
+                      src={(inProgressReport || topReport)?.photoBefore || 'https://lh3.googleusercontent.com/aida-public/AB6AXuD1Q3FRuW7Tg0DI06kWvMJ1quckUoxg3R4k5k0kGTr4qYevnGA3RtPr5joGVFSkXoHY5LFNuN-Yr6LrqSsBuVwm9ohWi8WT5X6561fXwNRc9BZWjDP3iABe_FZiR6iKH7MmV_e8xi6A0RFQ26Qk3XDuH1CekXhj1HD1LKlMr6IA0A7w1TFLE5HQu89w-AvspmfMxNhukxKfQAbvxxubobp85FFJrIoSx2PTEGzUqFbK9-FfX_Nf3UJa'}
                       alt="Sebelum"
                       className="w-full h-full object-cover"
                     />
@@ -541,7 +572,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       Sebelum
                     </span>
                     <span className="absolute bottom-1.5 inset-x-1.5 bg-black/75 text-white text-[8px] p-1 rounded text-center truncate">
-                      Trotoar Amblas (Warga)
+                      {(inProgressReport || topReport)?.title || 'Kerusakan Awal'}
                     </span>
                   </div>
 
@@ -581,8 +612,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               {/* Big Green Publish Button */}
               <button
                 onClick={() => {
-                  onUpdateReportStatus('#KBM-2025-0842', 'completed');
-                  showToast('Hasil perbaikan berhasil dipublikasikan ke Portal Warga & status tiket tuntas 100%!');
+                  const targetId = inProgressReport?.id || topReport?.id || '#KBM-2025-0842';
+                  onUpdateReportStatus(targetId, 'completed');
+                  showToast(`Hasil perbaikan tiket ${targetId} berhasil dipublikasikan ke Portal Warga & status tuntas 100%!`);
                 }}
                 className="w-full py-3 bg-[#005713] hover:bg-[#003d0b] text-[#a3f69c] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
               >
@@ -822,8 +854,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs text-center">
                 <span className="text-[10px] text-[#42474f] font-semibold block">SPK AKTIF</span>
-                <span className="text-xl font-black text-[#00355f] block my-0.5">12</span>
-                <span className="text-[9px] text-[#006496] font-bold">5 Siap Berangkat</span>
+                <span className="text-xl font-black text-[#00355f] block my-0.5">{inProgressCount}</span>
+                <span className="text-[9px] text-[#006496] font-bold">Terhubung Database</span>
               </div>
 
               <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs text-center">
@@ -841,89 +873,105 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             {/* Filter Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
-              <button className="px-3 py-1.5 rounded-full bg-[#00355f] text-white">Semua 18</button>
-              <button className="px-3 py-1.5 rounded-full bg-[#eaedff] text-[#00355f]">Diterbitkan 5</button>
-              <button className="px-3 py-1.5 rounded-full bg-[#f2f3ff] text-[#42474f]">Dalam Pengerjaan</button>
-              <button className="px-3 py-1.5 rounded-full bg-[#f2f3ff] text-[#42474f]">Selesai</button>
+              <button className="px-3 py-1.5 rounded-full bg-[#00355f] text-white">Semua ({reports.length})</button>
+              <button className="px-3 py-1.5 rounded-full bg-[#eaedff] text-[#00355f]">Diterbitkan ({needVerification})</button>
+              <button className="px-3 py-1.5 rounded-full bg-[#f2f3ff] text-[#42474f]">Pengerjaan ({inProgressCount})</button>
+              <button className="px-3 py-1.5 rounded-full bg-[#f2f3ff] text-[#42474f]">Selesai ({completedCount})</button>
             </div>
 
-            {/* Card SPK 1: #SPK-PUPR-2024-089 */}
-            <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-bold text-xs text-[#00355f]">
-                    #SPK-PUPR-2024-089
-                  </span>
-                  <span className="bg-[#ffdad6] text-[#ba1a1a] text-[10px] font-bold px-2 py-0.5 rounded">
-                    Prioritas #1 SAW (0.942)
-                  </span>
-                </div>
-                <span className="bg-[#cce5ff] text-[#00517b] text-[10px] font-extrabold px-2 py-0.5 rounded">
-                  Sedang Dikerjakan
-                </span>
-              </div>
-
-              <div>
-                <span className="text-[10px] text-[#42474f]">Diterbitkan 29 Okt, 08:30 WIB</span>
-                <h4 className="text-xs font-bold text-[#131b2e] leading-snug">
-                  Rekonstruksi Ramp Trotoar & Saluran Terbuka Depan RSUD Dr. Soedirman
-                </h4>
-                <p className="text-[10px] text-[#42474f] flex items-center gap-1 mt-0.5">
-                  <span className="material-symbols-outlined text-[13px] text-[#006496]">location_on</span>
-                  Jl. Lingkar Selatan KM 2.5, Muktisari, Kec. Kebumen
-                </p>
-              </div>
-
-              {/* Regu Info Box */}
-              <div className="p-2.5 bg-[#f2f3ff] rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-[#00355f] text-white flex items-center justify-center font-bold text-[10px]">
-                    TRC-A
+            {/* Card SPK 1: Dynamic In Progress Report */}
+            {inProgressReport && (
+              <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-xs text-[#00355f]">
+                      #SPK-PUPR-{inProgressReport.id.replace(/[^0-9]/g, '') || '0842'}
+                    </span>
+                    <span className="bg-[#ffdad6] text-[#ba1a1a] text-[10px] font-bold px-2 py-0.5 rounded">
+                      Skor SAW: {inProgressReport.sawScores.totalSaw.toFixed(3)}
+                    </span>
                   </div>
-                  <div>
-                    <div className="text-[11px] font-bold text-[#131b2e]">Tim Reaksi Cepat Regu A</div>
-                    <div className="text-[10px] text-[#42474f]">Ketua: Bpk. Bambang • 6 Personel</div>
+                  <span className="bg-[#cce5ff] text-[#00517b] text-[10px] font-extrabold px-2 py-0.5 rounded">
+                    {inProgressReport.statusLabel}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-[#42474f]">Tiket: {inProgressReport.id} • {inProgressReport.createdAt}</span>
+                  <h4 className="text-xs font-bold text-[#131b2e] leading-snug">
+                    {inProgressReport.title}
+                  </h4>
+                  <p className="text-[10px] text-[#42474f] flex items-center gap-1 mt-0.5">
+                    <span className="material-symbols-outlined text-[13px] text-[#006496]">location_on</span>
+                    {inProgressReport.address}
+                  </p>
+                </div>
+
+                {/* Regu Info Box */}
+                <div className="p-2.5 bg-[#f2f3ff] rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[#00355f] text-white flex items-center justify-center font-bold text-[10px]">
+                      TRC
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-[#131b2e]">
+                        {inProgressReport.assignedTeam?.name || 'Unit Reaksi Cepat Regu 2 DPUPR'}
+                      </div>
+                      <div className="text-[10px] text-[#42474f]">
+                        Penanggung Jawab: {inProgressReport.assignedTeam?.leadOfficer || 'Ir. Budi Santoso'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] bg-[#dae2fd] text-[#00355f] font-bold px-2 py-0.5 rounded">
+                    Siap Lapangan
+                  </span>
+                </div>
+
+                {/* SLA Target & Progress */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-bold">
+                    <span className="text-[#00355f] flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">timer</span> Target SLA: 48 Jam
+                    </span>
+                    <span className="text-[#ba1a1a]">
+                      {inProgressReport.assignedTeam?.remainingTime || 'Sisa 18 Jam'}
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#dae2fd] h-2 rounded-full overflow-hidden">
+                    <div
+                      className="bg-[#00355f] h-full transition-all duration-500"
+                      style={{ width: `${inProgressReport.assignedTeam?.progressPercent || 65}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-[10px] text-[#42474f] text-right font-semibold">
+                    Progres lapangan:{' '}
+                    <strong>{inProgressReport.assignedTeam?.progressPercent || 65}% Rampung</strong>
                   </div>
                 </div>
-                <span className="text-[10px] bg-[#dae2fd] text-[#00355f] font-bold px-2 py-0.5 rounded">
-                  Foto TRC
-                </span>
-              </div>
 
-              {/* SLA Target & Progress */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-bold">
-                  <span className="text-[#00355f] flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px]">timer</span> Target SLA: 48 Jam
-                  </span>
-                  <span className="text-[#ba1a1a]">Sisa 18 Jam 15 Menit</span>
-                </div>
-                <div className="w-full bg-[#dae2fd] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#00355f] h-full" style={{ width: '65%' }}></div>
-                </div>
-                <div className="text-[10px] text-[#42474f] text-right font-semibold">
-                  Pengecoran dasar ramp & penutup saluran <strong>65% Rampung</strong>
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => showToast(`Surat SPK untuk ${inProgressReport.id} berhasil diunduh (PDF)!`)}
+                    className="py-2 bg-[#f2f3ff] text-[#00355f] rounded-xl text-xs font-bold hover:bg-[#eaedff] flex items-center justify-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">picture_as_pdf</span>
+                    <span>Surat SPK (PDF)</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onUpdateReportStatus(inProgressReport.id, 'completed');
+                      showToast(`Progres tiket ${inProgressReport.id} selesai & status tuntas 100%!`);
+                    }}
+                    className="py-2 bg-[#00355f] text-white rounded-xl text-xs font-bold hover:bg-[#006496] flex items-center justify-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">task_alt</span>
+                    <span>Tandai Selesai</span>
+                  </button>
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  onClick={() => showToast('Surat SPK Elektronik (PDF) berhasil diunduh!')}
-                  className="py-2 bg-[#f2f3ff] text-[#00355f] rounded-xl text-xs font-bold hover:bg-[#eaedff] flex items-center justify-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[15px]">picture_as_pdf</span>
-                  <span>Surat SPK (PDF)</span>
-                </button>
-
-                <button
-                  onClick={() => showToast('Progres pengerjaan diperbarui ke 75%!')}
-                  className="py-2 bg-[#00355f] text-white rounded-xl text-xs font-bold hover:bg-[#006496] flex items-center justify-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[15px]">edit_note</span>
-                  <span>Update Progres</span>
-                </button>
-              </div>
+            )}
 
               <button
                 onClick={() => window.location.href = 'tel:0287381110'}
@@ -932,7 +980,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <span className="material-symbols-outlined text-[15px]">call</span>
                 <span>Hubungi Hotline Komunikasi Regu Lapangan</span>
               </button>
-            </div>
 
             {/* Card SPK 2: #SPK-PUPR-2024-092 */}
             <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">

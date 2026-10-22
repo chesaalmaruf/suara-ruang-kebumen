@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ReportItem } from '../types';
 import { LeafletMapView } from './LeafletMapView';
-import { InteractiveKebumenMap } from './InteractiveKebumenMap';
 
 interface BerandaViewProps {
   reports: ReportItem[];
@@ -19,7 +18,19 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'critical' | 'in_progress' | 'completed'>('all');
   const [sliderPos, setSliderPos] = useState(50); // 0 to 100 for before/after comparison
 
-  const completedReport = reports.find(r => r.id === '#KBM-2024-071') || reports[3];
+  const completedReport = reports.find(r => r.status === 'completed') || reports[0];
+
+  // Dynamic live statistics from MongoDB reports
+  const criticalCount = reports.filter(
+    r => r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85)
+  ).length;
+  const inProgressCount = reports.filter(
+    r => r.status === 'in_progress' || r.status === 'verified'
+  ).length;
+  const completedCount = reports.filter(r => r.status === 'completed').length;
+  const totalReportsCount = reports.length;
+  const completionPercentage =
+    totalReportsCount > 0 ? ((completedCount / totalReportsCount) * 100).toFixed(1) : '0';
 
   return (
     <div className="flex flex-col w-full px-4 pt-2 pb-24 space-y-5 max-w-md mx-auto">
@@ -49,28 +60,28 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
           geofenceRadiusMeters={20}
         />
 
-        {/* Status Legend Chips with Counter */}
+        {/* Status Legend Chips with Counter (Dynamic) */}
         <div className="grid grid-cols-3 gap-2 pt-1 text-center">
           <div className="bg-[#ffdad6]/40 p-2 rounded-xl flex flex-col items-center border border-[#ffdad6]">
             <span className="text-[10px] text-[#ba1a1a] font-bold flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-[#ba1a1a]"></span>
               Kritis (SAW &gt; 0.85)
             </span>
-            <span className="text-sm font-extrabold text-[#ba1a1a] mt-0.5">2 Titik</span>
+            <span className="text-sm font-extrabold text-[#ba1a1a] mt-0.5">{criticalCount} Titik</span>
           </div>
           <div className="bg-[#cce5ff]/40 p-2 rounded-xl flex flex-col items-center border border-[#cce5ff]">
             <span className="text-[10px] text-[#00517b] font-bold flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-[#006496]"></span>
               Diproses PUPR
             </span>
-            <span className="text-sm font-extrabold text-[#00517b] mt-0.5">5 Titik</span>
+            <span className="text-sm font-extrabold text-[#00517b] mt-0.5">{inProgressCount} Titik</span>
           </div>
           <div className="bg-[#a3f69c]/30 p-2 rounded-xl flex flex-col items-center border border-[#a3f69c]">
             <span className="text-[10px] text-[#003d0b] font-bold flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-[#005713]"></span>
               Tuntas 100%
             </span>
-            <span className="text-sm font-extrabold text-[#003d0b] mt-0.5">139 Titik</span>
+            <span className="text-sm font-extrabold text-[#003d0b] mt-0.5">{completedCount} Titik</span>
           </div>
         </div>
       </section>
@@ -116,21 +127,22 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
         </div>
 
         {/* 3 Key Metric Cards */}
+        {/* 3 Key Metric Cards (Dynamic Live MongoDB) */}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-white p-3 rounded-2xl shadow-xs border border-[#eaedff] flex flex-col justify-between">
             <span className="text-[11px] text-[#42474f] font-medium">Total Laporan</span>
-            <span className="text-[24px] font-black text-[#00355f] my-1 tabular-nums">164</span>
+            <span className="text-[24px] font-black text-[#00355f] my-1 tabular-nums">{totalReportsCount}</span>
             <span className="text-[10px] text-[#42474f] flex items-center gap-1 font-semibold">
               <span className="material-symbols-outlined text-[13px] text-[#005713]">trending_up</span>
-              2024 / 2025
+              Kab. Kebumen
             </span>
           </div>
 
           <div className="bg-white p-3 rounded-2xl shadow-xs border border-[#eaedff] flex flex-col justify-between">
             <span className="text-[11px] text-[#42474f] font-medium">Tuntas (PUPR)</span>
-            <span className="text-[24px] font-black text-[#005713] my-1 tabular-nums">139</span>
+            <span className="text-[24px] font-black text-[#005713] my-1 tabular-nums">{completedCount}</span>
             <span className="text-[10px] text-[#002204] font-extrabold bg-[#a3f69c] px-1.5 py-0.5 rounded-md w-fit">
-              84.7% Selesai
+              {completionPercentage}% Selesai
             </span>
           </div>
 

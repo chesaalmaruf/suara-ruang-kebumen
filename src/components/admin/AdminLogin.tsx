@@ -9,8 +9,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   onLoginSuccess,
   onBackToCitizen,
 }) => {
-  const [username, setUsername] = useState('admin_pupr');
-  const [password, setPassword] = useState('kebumen2025');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,25 +25,15 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
       if (
         (username === 'admin_pupr' && password === 'kebumen2025') ||
         (username === 'admin' && password === 'admin123') ||
-        (username.length >= 3 && password.length >= 6)
+        (username.trim().length >= 3 && password.trim().length >= 6)
       ) {
         setIsLoading(false);
         onLoginSuccess(username);
       } else {
         setIsLoading(false);
-        setErrorMsg('Username atau kata sandi tidak valid. Gunakan kredensial demo.');
+        setErrorMsg('Username atau kata sandi tidak valid. Silakan periksa kembali kredensial Anda.');
       }
-    }, 600);
-  };
-
-  const handleUseDemo = () => {
-    setUsername('admin_pupr');
-    setPassword('kebumen2025');
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onLoginSuccess('admin_pupr');
-    }, 400);
+    }, 500);
   };
 
   return (
@@ -55,7 +45,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
           className="flex items-center gap-1.5 text-xs text-[#006496] font-bold hover:underline"
         >
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          <span>Ke Portal Warga (suararuang.kebumenkab.go.id)</span>
+          <span>Kembali ke Portal Warga</span>
         </button>
         <span className="text-[10px] bg-[#eaedff] text-[#00355f] font-mono font-bold px-2 py-0.5 rounded-full">
           /admin
@@ -107,7 +97,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 required
-                placeholder="Contoh: admin_pupr"
+                placeholder="Masukkan NIP atau username pengawas"
                 className="w-full h-11 pl-10 pr-3 rounded-xl bg-[#f2f3ff] text-xs font-semibold text-[#131b2e] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] transition-all"
               />
             </div>
@@ -116,10 +106,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
           <div className="space-y-1">
             <div className="flex justify-between items-center">
               <label className="block text-xs font-bold text-[#131b2e]">
-                Kata Sandi Portal
+                Kata Sandi Akun
               </label>
               <span className="text-[10px] text-[#006496] font-semibold">
-                BSSN Terenkripsi
+                Terkoneksi Aman
               </span>
             </div>
             <div className="relative flex items-center">
@@ -131,7 +121,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                placeholder="••••••••"
+                placeholder="Masukkan kata sandi"
                 className="w-full h-11 pl-10 pr-3 rounded-xl bg-[#f2f3ff] text-xs font-semibold text-[#131b2e] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] transition-all"
               />
             </div>
@@ -147,7 +137,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               />
               <span>Ingat sesi pengawas</span>
             </label>
-            <span className="text-[#006496] font-semibold text-[11px]">
+            <span className="text-[#006496] font-semibold text-[11px] cursor-pointer hover:underline">
               Bantuan Akun
             </span>
           </div>
@@ -170,30 +160,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               </>
             )}
           </button>
-
-          {/* Quick Demo Login */}
-          <div className="pt-2 border-t border-[#eaedff]">
-            <button
-              type="button"
-              onClick={handleUseDemo}
-              className="w-full py-2.5 rounded-xl bg-[#eaedff] hover:bg-[#dae2fd] text-[#00355f] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <span className="material-symbols-outlined text-[16px]">key</span>
-              <span>Login Demo Instan (Pengawas DPUPR)</span>
-            </button>
-          </div>
         </form>
-
-        {/* Credentials Info Callout */}
-        <div className="p-3 bg-[#f2f3ff] rounded-2xl border border-[#dae2fd] text-[11px] text-[#42474f] space-y-1">
-          <div className="flex items-center gap-1 text-[#00355f] font-bold">
-            <span className="material-symbols-outlined text-[15px]">info</span>
-            <span>Kredensial Pengujian Prototipe:</span>
-          </div>
-          <div className="font-mono text-[10px] pl-4">
-            User: <strong>admin_pupr</strong> | Pass: <strong>kebumen2025</strong>
-          </div>
-        </div>
       </div>
 
       {/* Footer */}
