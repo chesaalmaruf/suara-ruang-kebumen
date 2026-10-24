@@ -1,9 +1,16 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { isMongoConfigured, getReportsCollection } from './lib/mongodb.ts';
-import { INITIAL_REPORTS } from '../src/data/initialData.ts';
+import {
+  isMongoConfigured,
+  getReportsCollection,
+  getInMemoryReports,
+  insertInMemoryReport,
+  updateInMemoryReport,
+  deleteInMemoryReport,
+} from './_lib/mongodb.ts';
+import { LEGACY_DUMMY_IDS } from '../src/data/initialData.ts';
 
 async function parseBody(req: IncomingMessage): Promise<any> {
-  if ((req as any).body) {
+  if ((req as any).body && Object.keys((req as any).body).length > 0) {
     return typeof (req as any).body === 'string'
       ? JSON.parse((req as any).body)
       : (req as any).body;
@@ -40,13 +47,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // Handle GET /api/reports
   if (req.method === 'GET') {
     if (!configured) {
+      const data = getInMemoryReports();
       res.statusCode = 200;
       res.end(
         JSON.stringify({
           success: true,
           source: 'fallback',
-          message: 'MONGODB_URI not configured. Serving initial data.',
-          data: INITIAL_REPORTS,
+          message: 'MONGODB_URI not configured. Serving in-memory data.',
+          data,
         })
       );
       return;
@@ -54,12 +62,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     try {
       const collection = await getReportsCollection();
-      const count = await collection.countDocuments();
 
-      // Auto-seed collection if empty
-      if (count === 0) {
-        console.log('Seeding MongoDB with INITIAL_REPORTS...');
-        await collection.insertMany(INITIAL_REPORTS as any);
+      // Clean up any legacy dummy seed documents that were previously auto-seeded
+      if (LEGACY_DUMMY_IDS.length > 0) {
+        await collection.deleteMany({ id: { $in: LEGACY_DUMMY_IDS } });
       }
 
       const docs = await collection
@@ -83,14 +89,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         })
       );
     } catch (err: any) {
-      console.error('Error querying MongoDB:', err);
+      console.warn('[AI Studio] MongoDB unreachable, serving in-memory fallback:', err.message);
       res.statusCode = 200;
       res.end(
         JSON.stringify({
           success: true,
           source: 'fallback_on_error',
           error: err.message,
-          data: INITIAL_REPORTS,
+          data: getInMemoryReports(),
         })
       );
     }
@@ -108,13 +114,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
 
+    insertInMemoryReport(newReport);
+
     if (!configured) {
       res.statusCode = 200;
       res.end(
         JSON.stringify({
           success: true,
           source: 'local_fallback',
-          message: 'Saved in client fallback (MongoDB not configured)',
+          message: 'Saved in in-memory fallback (MongoDB not configured)',
           data: newReport,
         })
       );
@@ -123,7 +131,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     try {
       const collection = await getReportsCollection();
-      await collection.insertOne(newReport);
+      await collection.insertOne({ ...newReport });
 
       res.statusCode = 201;
       res.end(
@@ -135,11 +143,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         })
       );
     } catch (err: any) {
-      console.error('Error inserting report to MongoDB:', err);
-      res.statusCode = 500;
+      console.warn('[AI Studio] MongoDB insert failed, kept in-memory:', err.message);
+      res.statusCode = 200;
       res.end(
         JSON.stringify({
-          success: false,
+          success: true,
+          source: 'local_fallback',
           error: err.message,
           data: newReport,
         })
@@ -158,6 +167,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       res.end(JSON.stringify({ success: false, error: 'Missing report id' }));
       return;
     }
+
+    updateInMemoryReport(id, updates);
 
     if (!configured) {
       res.statusCode = 200;
@@ -185,9 +196,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         })
       );
     } catch (err: any) {
-      console.error('Error updating report in MongoDB:', err);
-      res.statusCode = 500;
-      res.end(JSON.stringify({ success: false, error: err.message }));
+      console.warn('[AI Studio] MongoDB update failed, kept in-memory:', err.message);
+      res.statusCode = 200;
+      res.end(
+        JSON.stringify({
+          success: true,
+          source: 'local_fallback',
+          data: { id, ...updates },
+        })
+      );
     }
     return;
   }
@@ -203,6 +220,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
 
+    deleteInMemoryReport(reportId);
+
     if (!configured) {
       res.statusCode = 200;
       res.end(JSON.stringify({ success: true, source: 'local_fallback', id: reportId }));
@@ -216,8 +235,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       res.statusCode = 200;
       res.end(JSON.stringify({ success: true, source: 'mongodb', deletedId: reportId }));
     } catch (err: any) {
-      res.statusCode = 500;
-      res.end(JSON.stringify({ success: false, error: err.message }));
+      console.warn('[AI Studio] MongoDB delete failed, deleted in-memory:', err.message);
+      res.statusCode = 200;
+      res.end(JSON.stringify({ success: true, source: 'local_fallback', deletedId: reportId }));
     }
     return;
   }

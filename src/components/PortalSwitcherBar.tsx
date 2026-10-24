@@ -31,18 +31,30 @@ export const PortalSwitcherBar: React.FC<PortalSwitcherBarProps> = ({
         {dbStatus && (
           <div
             title={dbStatus.message}
-            className={`hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium border ${
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium border shrink-0 ${
               isConnected
                 ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                : dbStatus.status === 'error'
+                ? 'bg-red-950/60 text-red-300 border-red-500/40'
                 : 'bg-amber-950/60 text-amber-300 border-amber-500/40'
             }`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                isConnected ? 'bg-emerald-400' : 'bg-amber-400'
+                isConnected
+                  ? 'bg-emerald-400'
+                  : dbStatus.status === 'error'
+                  ? 'bg-red-400'
+                  : 'bg-amber-400'
               }`}
             ></span>
-            <span>{isConnected ? '🍃 MongoDB Atlas: Live' : '🍃 Local Storage'}</span>
+            <span>
+              {isConnected
+                ? '🍃 MongoDB Atlas: Live'
+                : dbStatus.status === 'error'
+                ? '⚠️ MongoDB Error'
+                : '🍃 Local Storage'}
+            </span>
           </div>
         )}
       </div>

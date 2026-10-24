@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { isMongoConfigured, getMongoClient } from './lib/mongodb.ts';
+import { isMongoConfigured, getDatabase, getResolvedDbName } from './_lib/mongodb.ts';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('Content-Type', 'application/json');
@@ -29,15 +29,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   }
 
   try {
-    const client = await getMongoClient();
-    // Ping MongoDB to test live connection
-    await client.db('admin').command({ ping: 1 });
+    const db = await getDatabase();
+    await db.command({ ping: 1 });
 
     res.statusCode = 200;
     res.end(
       JSON.stringify({
         status: 'ok',
         database: 'connected',
+        dbName: getResolvedDbName(),
         provider: 'MongoDB Atlas',
         message: 'Successfully connected to MongoDB database.',
         timestamp: new Date().toISOString(),

@@ -87,6 +87,10 @@ export function computeSawScore(
  * Re-ranks a list of reports by SAW score descending
  */
 export function rankReportsBySaw(reports: ReportItem[]): ReportItem[] {
+  if (!reports || reports.length === 0) {
+    return [];
+  }
+
   // Find max values for normalization
   const maxCriteria = {
     c1: Math.max(...reports.map(r => r.sawScores.c1Safety), 0.1),

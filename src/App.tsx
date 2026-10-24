@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { BerandaView } from './components/BerandaView';
@@ -8,22 +8,22 @@ import { Header } from './components/Header';
 import { LacakLaporanView } from './components/LacakLaporanView';
 import { PortalSwitcherBar } from './components/PortalSwitcherBar';
 import { SawExplainerModal } from './components/SawExplainerModal';
-import { INITIAL_REPORTS } from './data/initialData';
+import { LEGACY_DUMMY_IDS } from './data/initialData';
 import { ReportItem } from './types';
 import { rankReportsBySaw } from './utils/sawCalculator';
 import {
   fetchReports,
   createReport,
   updateReport,
+  deleteReport,
   DatabaseStatus,
+  STORAGE_KEY,
 } from './services/reportService';
 
-const STORAGE_KEY = 'suara_ruang_reports_kebumen_v2';
 const CONTRAST_KEY = 'suara_ruang_contrast_mode';
 const ADMIN_AUTH_KEY = 'suara_ruang_admin_auth';
 
 export default function App() {
-  // Routing state between Citizen Portal ('citizen') and Admin Portal ('admin')
   const [currentPortal, setCurrentPortal] = useState<'citizen' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
@@ -34,7 +34,6 @@ export default function App() {
     return 'citizen';
   });
 
-  // Admin authentication state
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(ADMIN_AUTH_KEY) === 'true';
@@ -42,13 +41,12 @@ export default function App() {
     return false;
   });
 
-  // Citizen Tab state
   const [citizenTab, setCitizenTab] = useState<'beranda' | 'lapor' | 'lacak'>('beranda');
-  const [selectedReportId, setSelectedReportId] = useState<string>('#KBM-2025-0842');
+  const [selectedReportId, setSelectedReportId] = useState<string>('');
+  const [prefilledLocation, setPrefilledLocation] = useState<string>('');
   const [isSawModalOpen, setIsSawModalOpen] = useState(false);
   const [isHighContrast, setIsHighContrast] = useState(false);
 
-  // Database connectivity state
   const [dbStatus, setDbStatus] = useState<DatabaseStatus>({
     connected: false,
     status: 'offline_fallback',
@@ -57,7 +55,43 @@ export default function App() {
   });
   const [isLoadingReports, setIsLoadingReports] = useState(false);
 
-  // Sync browser URL with routing
+  // Clean initial state (no dummy reports)
+  const [reports, setReports] = useState<ReportItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('suara_ruang_reports_kebumen_v2');
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter(
+              (r: ReportItem) => r && !LEGACY_DUMMY_IDS.includes(r.id)
+            );
+            return rankReportsBySaw(clean);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load local reports:', err);
+      }
+    }
+    return [];
+  });
+
+  const loadReportsFromServer = useCallback(async () => {
+    setIsLoadingReports(true);
+    try {
+      const { reports: fetchedReports, dbStatus: status } = await fetchReports();
+      setReports(fetchedReports);
+      setDbStatus(status);
+    } finally {
+      setIsLoadingReports(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReportsFromServer();
+  }, [loadReportsFromServer]);
+
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
@@ -78,46 +112,10 @@ export default function App() {
     if (window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
     }
+    // Always sync fresh reports from MongoDB when switching portals
+    loadReportsFromServer();
   };
 
-  // Initial reports state (starts from local cache / INITIAL_REPORTS)
-  const [reports, setReports] = useState<ReportItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return rankReportsBySaw(parsed);
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to load local reports:', err);
-      }
-    }
-    return rankReportsBySaw(INITIAL_REPORTS);
-  });
-
-  // Fetch live reports from MongoDB API on mount
-  useEffect(() => {
-    let isMounted = true;
-    setIsLoadingReports(true);
-
-    fetchReports().then(({ reports: fetchedReports, dbStatus: status }) => {
-      if (!isMounted) return;
-      if (fetchedReports && fetchedReports.length > 0) {
-        setReports(fetchedReports);
-      }
-      setDbStatus(status);
-      setIsLoadingReports(false);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // High contrast mode initialization and toggle
   useEffect(() => {
     const saved = localStorage.getItem(CONTRAST_KEY);
     if (saved === 'true') {
@@ -138,10 +136,10 @@ export default function App() {
     }
   };
 
-  // Admin Login / Logout handlers
-  const handleAdminLoginSuccess = (user: string) => {
+  const handleAdminLoginSuccess = () => {
     setIsAdminLoggedIn(true);
     localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+    loadReportsFromServer();
   };
 
   const handleAdminLogout = () => {
@@ -149,98 +147,85 @@ export default function App() {
     localStorage.removeItem(ADMIN_AUTH_KEY);
   };
 
-  // Submit new report handler from citizen
-  const handleAddNewReport = (newReport: ReportItem) => {
-    const updatedList = [newReport, ...reports];
+  // Citizen submits a new report -> saved to MongoDB & immediately available in Admin
+  const handleAddNewReport = async (newReport: ReportItem) => {
+    const updatedList = [newReport, ...reports.filter(r => r.id !== newReport.id)];
     const rankedList = rankReportsBySaw(updatedList);
     setReports(rankedList);
     setSelectedReportId(newReport.id);
+    setPrefilledLocation('');
 
-    // Sync to MongoDB in background
-    createReport(newReport)
-      .then(() => {
-        fetchReports().then(({ dbStatus: status }) => setDbStatus(status));
-      })
-      .catch(err => console.error('Failed to sync new report with MongoDB:', err));
+    try {
+      await createReport(newReport);
+      await loadReportsFromServer();
+    } catch (err) {
+      console.error('Failed to sync new report with MongoDB:', err);
+    }
 
-    // Redirect to tracking tab
     setTimeout(() => {
       setCitizenTab('lacak');
-    }, 1200);
+    }, 900);
   };
 
-  // Update report status from Admin Portal
-  const handleUpdateStatus = (reportId: string, newStatus: ReportItem['status']) => {
-    const updated = reports.map(r => {
-      if (r.id === reportId) {
-        const isCompleted = newStatus === 'completed';
-        return {
-          ...r,
-          status: newStatus,
-          statusLabel: isCompleted
-            ? 'Tuntas 100% (Terverifikasi DPUPR)'
-            : newStatus === 'in_progress'
-            ? 'Sedang Dikerjakan oleh Dinas PUPR'
-            : 'Terverifikasi DPUPR',
-          completedAt: isCompleted ? 'Hari Ini • Baru Saja' : undefined,
-          timeline: r.timeline.map((step, idx) => {
-            if (isCompleted) {
-              return { ...step, completed: true, active: false };
-            }
-            if (newStatus === 'in_progress' && idx === 2) {
-              return { ...step, completed: true, active: true };
-            }
-            return step;
-          }),
-        };
-      }
-      return r;
-    });
-
+  // Admin processes a report (verify, issue SPK, update progress, upload after-photo, complete)
+  const handleProcessReport = async (reportId: string, updates: Partial<ReportItem>) => {
+    const updated = reports.map(r => (r.id === reportId ? { ...r, ...updates } : r));
     const ranked = rankReportsBySaw(updated);
     setReports(ranked);
 
-    // Sync to MongoDB
-    const target = updated.find(r => r.id === reportId);
-    if (target) {
-      updateReport(reportId, {
-        status: target.status,
-        statusLabel: target.statusLabel,
-        completedAt: target.completedAt,
-        timeline: target.timeline,
-      }).catch(err => console.error('Failed to sync status update with MongoDB:', err));
+    try {
+      await updateReport(reportId, updates);
+    } catch (err) {
+      console.error('Failed to sync report update with MongoDB:', err);
+    }
+  };
+
+  // Admin deletes a report
+  const handleDeleteReport = async (reportId: string) => {
+    const filtered = reports.filter(r => r.id !== reportId);
+    const ranked = rankReportsBySaw(filtered);
+    setReports(ranked);
+    if (selectedReportId === reportId) {
+      setSelectedReportId(ranked[0]?.id || '');
+    }
+
+    try {
+      await deleteReport(reportId);
+    } catch (err) {
+      console.error('Failed to delete report from MongoDB:', err);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#f0f4f9] text-[#131b2e] flex flex-col justify-start selection:bg-[#7fc5fd]/30">
-      {/* Dual Web Address Switcher Bar (simulates separate domains/addresses as requested) */}
       <PortalSwitcherBar
         currentPortal={currentPortal}
         onSwitchPortal={navigatePortal}
         dbStatus={dbStatus}
       />
 
-      {/* =========================================================================
-          PORTAL 1: CITIZEN / WARGA PORTAL (https://suararuang.kebumenkab.go.id/)
-          ========================================================================= */}
+      {/* PORTAL 1: CITIZEN / WARGA PORTAL */}
       {currentPortal === 'citizen' && (
         <div className="w-full max-w-md bg-[#faf8ff] min-h-[calc(100vh-32px)] flex flex-col relative mx-auto shadow-2xl border-x border-[#eaedff]">
-          {/* Universal Citizen Top Header */}
           <Header
             currentTab={citizenTab}
-            onTabChange={setCitizenTab}
+            onTabChange={tab => {
+              if (tab !== 'lapor') setPrefilledLocation('');
+              setCitizenTab(tab);
+            }}
             onOpenSawModal={() => setIsSawModalOpen(true)}
             isHighContrast={isHighContrast}
             onToggleContrast={handleToggleContrast}
           />
 
-          {/* Dynamic Citizen Views */}
           <main className="flex-1 pt-16 flex flex-col">
             {citizenTab === 'beranda' && (
               <BerandaView
                 reports={reports}
-                onNavigateToLapor={() => setCitizenTab('lapor')}
+                onNavigateToLapor={() => {
+                  setPrefilledLocation('');
+                  setCitizenTab('lapor');
+                }}
                 onNavigateToLacak={reportId => {
                   if (reportId) setSelectedReportId(reportId);
                   setCitizenTab('lacak');
@@ -251,6 +236,7 @@ export default function App() {
 
             {citizenTab === 'lapor' && (
               <BuatLaporanView
+                initialPlaceName={prefilledLocation}
                 onSubmitReport={handleAddNewReport}
                 onCancel={() => setCitizenTab('beranda')}
               />
@@ -261,6 +247,7 @@ export default function App() {
                 reports={reports}
                 initialSearchId={selectedReportId}
                 onNavigateToLaporWithLocation={loc => {
+                  setPrefilledLocation(loc);
                   setCitizenTab('lapor');
                 }}
                 onOpenSawModal={() => setIsSawModalOpen(true)}
@@ -268,10 +255,14 @@ export default function App() {
             )}
           </main>
 
-          {/* Citizen Fixed Bottom Navigation Bar */}
-          <BottomNav currentTab={citizenTab} onTabChange={setCitizenTab} />
+          <BottomNav
+            currentTab={citizenTab}
+            onTabChange={tab => {
+              if (tab !== 'lapor') setPrefilledLocation('');
+              setCitizenTab(tab);
+            }}
+          />
 
-          {/* Modal: SAW Formula & Weight Methodology */}
           <SawExplainerModal
             isOpen={isSawModalOpen}
             onClose={() => setIsSawModalOpen(false)}
@@ -279,9 +270,7 @@ export default function App() {
         </div>
       )}
 
-      {/* =========================================================================
-          PORTAL 2: ADMIN DINAS PUPR PORTAL (https://admin.suararuang.kebumenkab.go.id/admin)
-          ========================================================================= */}
+      {/* PORTAL 2: ADMIN DINAS PUPR PORTAL */}
       {currentPortal === 'admin' && (
         <div className="w-full max-w-md bg-[#faf8ff] min-h-[calc(100vh-32px)] flex flex-col relative mx-auto shadow-2xl border-x border-[#eaedff]">
           {!isAdminLoggedIn ? (
@@ -292,7 +281,10 @@ export default function App() {
           ) : (
             <AdminPortal
               reports={reports}
-              onUpdateReportStatus={handleUpdateStatus}
+              onProcessReport={handleProcessReport}
+              onDeleteReport={handleDeleteReport}
+              onRefreshReports={loadReportsFromServer}
+              isRefreshing={isLoadingReports}
               onLogout={handleAdminLogout}
               onSwitchToCitizen={() => navigatePortal('citizen')}
               dbStatus={dbStatus}

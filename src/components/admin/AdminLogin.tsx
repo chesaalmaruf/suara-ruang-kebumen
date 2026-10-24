@@ -21,19 +21,26 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     setErrorMsg(null);
 
     setTimeout(() => {
-      // Validate credentials
+      const cleanUser = username.trim();
       if (
-        (username === 'admin_pupr' && password === 'kebumen2025') ||
-        (username === 'admin' && password === 'admin123') ||
-        (username.trim().length >= 3 && password.trim().length >= 6)
+        (cleanUser === 'admin_pupr' && password === 'kebumen2025') ||
+        (cleanUser === 'admin' && password === 'admin123')
       ) {
         setIsLoading(false);
-        onLoginSuccess(username);
+        onLoginSuccess(cleanUser);
       } else {
         setIsLoading(false);
-        setErrorMsg('Username atau kata sandi tidak valid. Silakan periksa kembali kredensial Anda.');
+        setErrorMsg(
+          'Username atau kata sandi tidak valid. Gunakan akun pengawas resmi Dinas PUPR.'
+        );
       }
-    }, 500);
+    }, 350);
+  };
+
+  const handleQuickLogin = () => {
+    setUsername('admin_pupr');
+    setPassword('kebumen2025');
+    onLoginSuccess('admin_pupr');
   };
 
   return (
@@ -54,7 +61,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
 
       {/* Login Card */}
       <div className="my-auto py-6 space-y-6">
-        {/* Header Branding */}
         <div className="text-center space-y-2">
           <div className="w-16 h-16 rounded-2xl bg-[#00355f] text-white flex items-center justify-center mx-auto shadow-lg shadow-[#00355f]/20 ring-4 ring-[#d2e4ff]">
             <span className="material-symbols-outlined text-[34px] text-[#7fc5fd]">
@@ -76,7 +82,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} className="bg-white p-5 rounded-3xl shadow-sm border border-[#eaedff] space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white p-5 rounded-3xl shadow-sm border border-[#eaedff] space-y-4"
+        >
           {errorMsg && (
             <div className="p-3 bg-[#ffdad6] text-[#ba1a1a] text-xs font-semibold rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined text-[18px]">error</span>
@@ -86,7 +95,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
 
           <div className="space-y-1">
             <label className="block text-xs font-bold text-[#131b2e]">
-              Username Pegawai / NIP
+              Username Pegawai / Pengawas
             </label>
             <div className="relative flex items-center">
               <span className="material-symbols-outlined absolute left-3 text-[#00355f] text-[18px]">
@@ -97,7 +106,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 required
-                placeholder="Masukkan NIP atau username pengawas"
+                placeholder="admin_pupr"
                 className="w-full h-11 pl-10 pr-3 rounded-xl bg-[#f2f3ff] text-xs font-semibold text-[#131b2e] focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] transition-all"
               />
             </div>
@@ -137,12 +146,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               />
               <span>Ingat sesi pengawas</span>
             </label>
-            <span className="text-[#006496] font-semibold text-[11px] cursor-pointer hover:underline">
-              Bantuan Akun
-            </span>
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={isLoading}
@@ -160,10 +165,18 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               </>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={handleQuickLogin}
+            className="w-full h-10 rounded-xl bg-[#eaedff] hover:bg-[#dae2fd] text-[#00355f] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[16px]">bolt</span>
+            <span>Masuk Cepat Pengawas PUPR</span>
+          </button>
         </form>
       </div>
 
-      {/* Footer */}
       <footer className="text-center py-2 text-[10px] text-[#727780]">
         Pemerintah Kabupaten Kebumen • Dinas Pekerjaan Umum dan Penataan Ruang (PUPR)
       </footer>

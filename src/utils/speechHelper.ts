@@ -91,8 +91,13 @@ export class DictationService {
       };
 
       this.recognition.onerror = (e: any) => {
-        console.warn('Recognition error, switching to assistive simulation:', e);
-        this.fallbackSimulation(callbacks);
+        this.isListening = false;
+        callbacks.onListeningChange(false);
+        callbacks.onError?.(
+          e?.error === 'not-allowed'
+            ? 'Izin mikrofon ditolak. Silakan aktifkan izin mikrofon pada browser Anda.'
+            : 'Dikte suara gagal menangkap audio. Silakan coba lagi atau ketik manual.'
+        );
       };
 
       this.recognition.onend = () => {
@@ -103,28 +108,17 @@ export class DictationService {
       try {
         this.recognition.start();
       } catch {
-        this.fallbackSimulation(callbacks);
+        this.isListening = false;
+        callbacks.onListeningChange(false);
+        callbacks.onError?.('Tidak dapat memulai mikrofon pada browser ini.');
       }
     } else {
-      this.fallbackSimulation(callbacks);
-    }
-  }
-
-  private fallbackSimulation(callbacks: DictationCallback): void {
-    const samplePhrases = [
-      'Guiding block trotoar pecah dan berlubang sekitar 2 meter, sangat berbahaya bagi tunanetra yang melintas menuju halte bus.',
-      'Ramp kursi roda terlalu curam dengan kemiringan lebih dari 20 derajat, tidak ada pegangan tangan pengaman.',
-      'Ubin pemandu terhalang pot tanaman besar dan tiang reklame, akses pejalan kaki difabel terblokir.',
-      'Penutup manhole drainase amblas sedalam 15 cm di depan ruko, membahayakan pengguna kursi roda dan lansia.'
-    ];
-
-    const chosenPhrase = samplePhrases[Math.floor(Math.random() * samplePhrases.length)];
-
-    this.simulationTimer = setTimeout(() => {
-      callbacks.onResult(chosenPhrase);
       this.isListening = false;
       callbacks.onListeningChange(false);
-    }, 1800);
+      callbacks.onError?.(
+        'Browser perangkat ini belum mendukung dikte suara. Silakan ketik deskripsi secara manual.'
+      );
+    }
   }
 
   stop(callbacks: DictationCallback): void {

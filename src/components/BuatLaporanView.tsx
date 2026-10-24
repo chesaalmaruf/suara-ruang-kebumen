@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { FacilityCategory, ReportItem, SeverityLevel } from '../types';
+import { compressImageFile, formatCurrentWibTime } from '../utils/imageHelper';
 import { calculateRawCriteria, computeSawScore } from '../utils/sawCalculator';
 import { DictationService, speakText } from '../utils/speechHelper';
 import { LeafletMapView } from './LeafletMapView';
@@ -7,34 +8,54 @@ import { LeafletMapView } from './LeafletMapView';
 interface BuatLaporanViewProps {
   onSubmitReport: (newReport: ReportItem) => void;
   onCancel: () => void;
+  initialPlaceName?: string;
 }
+
+const KEBUMEN_DISTRICTS = [
+  'Kebumen',
+  'Gombong',
+  'Karanganyar',
+  'Pejagoan',
+  'Klirong',
+  'Sruweng',
+  'Prembun',
+  'Kutowinangun',
+  'Petanahan',
+  'Ayah',
+  'Rowokele',
+  'Sempor',
+  'Buayan',
+  'Adimulyo',
+  'Kuwarasan',
+  'Alian',
+  'Puring',
+  'Ambal',
+  'Mirit',
+  'Lainnya',
+];
 
 export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   onSubmitReport,
-  onCancel,
+  initialPlaceName = '',
 }) => {
-  // Form State
-  const [placeName, setPlaceName] = useState('📍 Alun-Alun Kebumen');
-  const [address, setAddress] = useState(
-    'Jl. Veteran No. 1, Kebumen (Depan Masjid Agung Kebumen)'
-  );
+  // Clean initial form state (no pre-filled dummy values)
+  const [placeName, setPlaceName] = useState(initialPlaceName);
+  const [district, setDistrict] = useState('Kebumen');
+  const [address, setAddress] = useState('');
   const [coordinates, setCoordinates] = useState({ lat: -7.6748, lng: 109.6575 });
-  const [isPickerActive, setIsPickerActive] = useState(false);
 
   const [category, setCategory] = useState<FacilityCategory>('public_space');
   const [obstacleType, setObstacleType] = useState('Trotoar rusak atau terhalang');
   const [severity, setSeverity] = useState<SeverityLevel>('severe');
-  const [impactedGroups, setImpactedGroups] = useState<string[]>([
-    'Penyandang disabilitas',
-    'Lansia',
-  ]);
+  const [impactedGroups, setImpactedGroups] = useState<string[]>(['Penyandang disabilitas']);
 
-  const [photoUrl, setPhotoUrl] = useState<string>(
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuDeW2V-OYmaId2o2Dqzs3AtGMysDjF_l48Ga_1tX6waVVwKdZMknFegrUgHXlM75SPmRXCN6-x76KtdjCvFSp5YeM7zDdXHS-NFVgCzYFqjrT7oGhVogzhKGDSUXA8jdkg4Lmd-pEAY8ZFjHLhFnxhQ8qh39jkM9jJRkqLNM-NTdBVNp6ZFyaSfIA4i0HYQCsX9j6FpUcwtDBnUcKtHPK9T7VidJGVXlVWXxcoSr4ueabQVmSYZHMqO'
-  );
-  const [notes, setNotes] = useState(
-    'Guiding block trotoar pecah dan berlubang sekitar 2 meter, membahayakan pejalan kaki tunanetra yang melintas ke arah selter.'
-  );
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // Dictation state
   const [isDictating, setIsDictating] = useState(false);
@@ -45,15 +66,40 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [newTicketId, setNewTicketId] = useState('');
 
+  // Dynamic step progress indicator
+  const step1Done = placeName.trim().length > 0 && address.trim().length > 0;
+  const step2Done = Boolean(category && obstacleType && severity);
+  const step3Done = notes.trim().length > 0 || photoUrl.length > 0;
+  const currentStep = !step1Done ? 1 : !step3Done ? 2 : 3;
+
   const toggleImpactedGroup = (group: string) => {
     if (impactedGroups.includes(group)) {
-      setImpactedGroups(impactedGroups.filter(g => g !== group));
+      if (impactedGroups.length > 1) {
+        setImpactedGroups(impactedGroups.filter(g => g !== group));
+      }
     } else {
       setImpactedGroups([...impactedGroups, group]);
     }
   };
 
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFormError(null);
+    setIsProcessingPhoto(true);
+    try {
+      const compressed = await compressImageFile(file, 960, 0.75);
+      setPhotoUrl(compressed);
+    } catch (err: any) {
+      setFormError(err?.message || 'Gagal memproses foto.');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
   const handleVoiceDictation = () => {
+    setFormError(null);
     if (isDictating) {
       dictationService.stop({
         onResult: () => {},
@@ -67,21 +113,39 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
         setNotes(prev => (prev ? `${prev} ${transcript}` : transcript));
       },
       onListeningChange: setIsDictating,
+      onError: msg => setFormError(msg),
     });
   };
 
   const handleReadSummary = () => {
-    const summaryText = `Rangkuman Laporan Anda. Lokasi: ${placeName}, ${address}. Jenis fasilitas: ${
-      category === 'public_space' ? 'Ruang Publik' : 'Fasilitas Umum'
-    }. Hambatan: ${obstacleType}. Tingkat keparahan: ${severity}. Catatan: ${notes}`;
+    const summaryText = `Rangkuman Laporan Anda. Lokasi: ${
+      placeName || 'belum diisi'
+    }, Kecamatan ${district}, ${address || 'alamat belum diisi'}. Hambatan: ${obstacleType}. Tingkat keparahan: ${severity}. Catatan: ${
+      notes || 'belum ada catatan'
+    }`;
     speakText(summaryText);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
+    const cleanPlace = placeName.replace(/^📍\s*/, '').trim();
+    const cleanAddress = address.trim();
+    const cleanNotes = notes.trim();
+
+    if (!cleanPlace || !cleanAddress) {
+      setFormError('Mohon lengkapi Nama Tempat dan Alamat lokasi hambatan.');
+      return;
+    }
+
+    if (!cleanNotes) {
+      setFormError('Mohon tuliskan deskripsi singkat mengenai kondisi hambatan.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    // Compute SAW Score
     const rawCriteria = calculateRawCriteria(
       severity,
       category,
@@ -90,15 +154,17 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
     );
     const totalSaw = computeSawScore(rawCriteria);
 
-    const generatedId = `#KBM-2025-${Math.floor(1000 + Math.random() * 9000)}`;
+    const year = new Date().getFullYear();
+    const generatedId = `#KBM-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const nowFormatted = formatCurrentWibTime();
     setNewTicketId(generatedId);
 
     const newReport: ReportItem = {
       id: generatedId,
-      title: `${obstacleType} di ${placeName.replace('📍 ', '')}`,
-      placeName: placeName.replace('📍 ', ''),
-      address,
-      district: 'Kebumen',
+      title: `${obstacleType} di ${cleanPlace}`,
+      placeName: cleanPlace,
+      address: cleanAddress,
+      district,
       coordinates,
       facilityCategory: category,
       obstacleType,
@@ -112,11 +178,11 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           ? 'Sedang, cukup mengganggu'
           : 'Ringan, masih mudah dilewati',
       impactedGroups,
-      description: notes,
+      description: cleanNotes,
       photoBefore: photoUrl,
       status: 'submitted',
-      statusLabel: 'Diterima oleh Sistem Lapor Akses Kebumen',
-      createdAt: 'Baru Saja • Hari ini',
+      statusLabel: 'Menunggu Verifikasi DPUPR',
+      createdAt: nowFormatted,
       sawScores: {
         ...rawCriteria,
         totalSaw,
@@ -125,8 +191,8 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
         {
           stage: 1,
           title: '1. Laporan Dikirim',
-          time: 'Baru saja',
-          desc: 'Diterima oleh sistem Lapor Akses Kebumen dari warga via portal publik.',
+          time: nowFormatted,
+          desc: 'Diterima oleh sistem Lapor Akses Kebumen dan masuk ke antrean verifikasi Admin Dinas PUPR.',
           completed: true,
           active: true,
         },
@@ -134,37 +200,35 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           stage: 2,
           title: '2. Verifikasi Lapangan',
           time: 'Menunggu Pengawas',
-          desc: 'Pengawas DPUPR & Dishub akan memvalidasi bukti visual dan koordinat GPS.',
+          desc: 'Pengawas DPUPR memvalidasi bukti visual, lokasi GPS, dan skor prioritas SAW.',
           completed: false,
         },
         {
           stage: 3,
           title: '3. Sedang Dikerjakan',
-          time: 'Estimasi 24-48 Jam',
-          desc: 'Pemberangkatan Tim Reaksi Cepat (TRC) PUPR ke lokasi.',
+          time: 'Menunggu SPK',
+          desc: 'Penerbitan SPK & pengerahan Tim Reaksi Cepat (TRC) Dinas PUPR ke lokasi.',
           completed: false,
         },
         {
           stage: 4,
           title: '4. Selesai & Validasi Inklusif',
           time: 'Tahap Akhir',
-          desc: 'Pengujian fisik ramp dan guiding blocks oleh perwakilan komunitas disabilitas.',
+          desc: 'Publikasi hasil perbaikan fasilitas aksesibilitas ruang publik.',
           completed: false,
         },
       ],
     };
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSubmissionSuccess(true);
-      onSubmitReport(newReport);
-    }, 1200);
+    setIsSubmitting(false);
+    setSubmissionSuccess(true);
+    onSubmitReport(newReport);
   };
 
   if (submissionSuccess) {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto min-h-[60vh] space-y-4">
-        <div className="w-18 h-18 rounded-full bg-[#a3f69c] text-[#002204] flex items-center justify-center shadow-lg animate-bounce">
+        <div className="w-18 h-18 rounded-full bg-[#a3f69c] text-[#002204] flex items-center justify-center shadow-lg">
           <span className="material-symbols-outlined text-[36px]">check_circle</span>
         </div>
         <h2 className="text-xl font-extrabold text-[#131b2e]">
@@ -177,7 +241,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           </p>
         </div>
         <p className="text-sm text-[#42474f] leading-relaxed">
-          Tiket otomatis tersimpan di penyimpanan perangkat browser Anda (Local Storage) tanpa perlu login akun. Skor SAW telah dihitung untuk antrean disposisi PUPR.
+          Laporan telah tersimpan ke database dan langsung masuk ke antrean Admin Dinas PUPR untuk diverifikasi dan ditindaklanjuti berdasarkan prioritas SAW.
         </p>
       </div>
     );
@@ -185,15 +249,32 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col w-full pb-28 max-w-md mx-auto">
+      {/* Hidden Real File Inputs for Camera & Gallery */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handlePhotoFileChange}
+        className="hidden"
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handlePhotoFileChange}
+        className="hidden"
+      />
+
       {/* Interactive Progress Header Section */}
       <section className="px-4 pt-3 pb-3 bg-[#f2f3ff] shadow-xs border-b border-[#eaedff]">
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#00355f] text-white text-xs font-extrabold">
-              1
+              {currentStep}
             </span>
             <span className="text-[15px] font-bold text-[#131b2e]">
-              Langkah 1 dari 3
+              Langkah {currentStep} dari 3
             </span>
           </div>
           <span className="text-[11px] font-bold text-[#006496] bg-white px-2 py-0.5 rounded-md border border-[#eaedff]">
@@ -203,26 +284,34 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
 
         {/* 3-Segment Visual Progress Bar */}
         <div aria-hidden="true" className="w-full grid grid-cols-3 gap-2 mt-1">
-          <div className="h-2 rounded-full bg-[#00355f] relative overflow-hidden">
-            <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
-          </div>
-          <div className="h-2 rounded-full bg-[#dae2fd]"></div>
-          <div className="h-2 rounded-full bg-[#dae2fd]"></div>
+          <div className="h-2 rounded-full bg-[#00355f]"></div>
+          <div
+            className={`h-2 rounded-full ${
+              step1Done && step2Done ? 'bg-[#00355f]' : 'bg-[#dae2fd]'
+            }`}
+          ></div>
+          <div
+            className={`h-2 rounded-full ${
+              step1Done && step2Done && step3Done ? 'bg-[#00355f]' : 'bg-[#dae2fd]'
+            }`}
+          ></div>
         </div>
 
         <div className="flex justify-between items-center text-[10px] text-[#42474f] font-bold mt-1.5 px-0.5">
           <span className="text-[#00355f]">1. Lokasi</span>
-          <span>2. Hambatan</span>
-          <span>3. Bukti & Keterangan</span>
+          <span className={step1Done ? 'text-[#00355f]' : ''}>2. Hambatan</span>
+          <span className={step3Done ? 'text-[#00355f]' : ''}>3. Bukti & Keterangan</span>
         </div>
-
-        <p className="text-[11px] text-[#42474f] mt-1.5">
-          Formulir Pelaporan Aksesibilitas Terpadu Kabupaten Kebumen
-        </p>
       </section>
 
-      {/* Main Multi-step Form Content */}
       <div className="px-4 py-4 space-y-5">
+        {formError && (
+          <div className="p-3 rounded-xl bg-[#ffdad6] text-[#ba1a1a] text-xs font-bold flex items-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">error</span>
+            <span>{formError}</span>
+          </div>
+        )}
+
         {/* ================= BAGIAN 1: LOKASI KEJADIAN ================= */}
         <fieldset className="space-y-3 p-4 rounded-2xl bg-white shadow-xs border border-[#eaedff]">
           <div className="flex items-center justify-between">
@@ -233,13 +322,9 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               Lokasi Kejadian
             </legend>
             <span className="px-2 py-0.5 rounded-md bg-[#cce5ff] text-[#001e31] text-[10px] font-extrabold">
-              Fokus Sekarang
+              Wajib Diisi
             </span>
           </div>
-
-          <p className="text-[11px] text-[#42474f]">
-            Tentukan lokasi tempat hambatan ditemukan.
-          </p>
 
           {/* Kolom Nama Tempat */}
           <div className="space-y-1">
@@ -260,9 +345,31 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                 onChange={e => setPlaceName(e.target.value)}
                 required
                 className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[13px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all"
-                placeholder="Contoh: Alun-Alun Kebumen"
+                placeholder="Ketik nama tempat / fasilitas umum..."
               />
             </div>
+          </div>
+
+          {/* Kolom Kecamatan */}
+          <div className="space-y-1">
+            <label
+              className="block text-[12px] font-bold text-[#131b2e]"
+              htmlFor="district-select"
+            >
+              Kecamatan <span className="text-[#ba1a1a]">*</span>
+            </label>
+            <select
+              id="district-select"
+              value={district}
+              onChange={e => setDistrict(e.target.value)}
+              className="w-full h-11 px-3 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[13px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f]"
+            >
+              {KEBUMEN_DISTRICTS.map(d => (
+                <option key={d} value={d}>
+                  Kecamatan {d}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Kolom Alamat */}
@@ -271,7 +378,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               className="block text-[12px] font-bold text-[#131b2e]"
               htmlFor="address-input"
             >
-              Alamat atau Keterangan Lokasi <span className="text-[#ba1a1a]">*</span>
+              Alamat Lengkap / Patokan Lokasi <span className="text-[#ba1a1a]">*</span>
             </label>
             <textarea
               id="address-input"
@@ -280,7 +387,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               onChange={e => setAddress(e.target.value)}
               required
               className="w-full p-3 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[12px] leading-relaxed focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all resize-none"
-              placeholder="Tuliskan nama jalan, patokan gedung, atau detail lokasi..."
+              placeholder="Tuliskan nama jalan, patokan gedung, atau detail titik lokasi..."
             />
           </div>
 
@@ -289,11 +396,10 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-[12px] font-bold text-[#131b2e] flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[#006496] text-[18px]">map</span>
-                Titik Lokasi pada Peta
+                Titik Koordinat Peta (Ketuk / Geser Pin)
               </label>
-              <span className="px-2 py-0.5 rounded-full bg-[#a3f69c] text-[#002204] text-[10px] font-bold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#005713] animate-ping"></span>
-                GPS Terkunci
+              <span className="px-2 py-0.5 rounded-full bg-[#eaedff] text-[#00355f] text-[10px] font-bold">
+                GPS Interaktif
               </span>
             </div>
 
@@ -302,29 +408,24 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               heightClass="h-44"
               isPickerMode={true}
               selectedCoordinates={coordinates}
-              onPickCoordinates={(coords, name) => {
+              onPickCoordinates={(coords, label) => {
                 setCoordinates(coords);
-                setPlaceName(`📍 ${name}`);
+                if (!placeName.trim()) {
+                  setPlaceName(label);
+                }
               }}
             />
 
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-[11px] text-[#42474f] font-mono">
-                <span className="material-symbols-outlined text-[16px] text-[#006496]">my_location</span>
-                <span>{coordinates.lat}, {coordinates.lng}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPickerActive(!isPickerActive)}
-                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 ${
-                  isPickerActive
-                    ? 'bg-[#00355f] text-white shadow-xs'
-                    : 'bg-[#eaedff] text-[#00355f] hover:bg-[#dae2fd]'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[15px]">touch_app</span>
-                <span>{isPickerActive ? 'Selesai Pilih' : 'Pilih Titik di Peta'}</span>
-              </button>
+            <div className="flex items-center justify-between gap-2 text-[11px] text-[#42474f] font-mono">
+              <span className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-[15px] text-[#006496]">
+                  my_location
+                </span>
+                {coordinates.lat}, {coordinates.lng}
+              </span>
+              <span className="text-[10px] font-sans text-[#006496] font-semibold">
+                Ketuk peta untuk pindah pin
+              </span>
             </div>
           </div>
         </fieldset>
@@ -402,8 +503,9 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               {[
                 'Trotoar rusak atau terhalang',
                 'Guiding block terputus',
-                'Tidak ada ramp curam',
-                'Lubang manhole terbuka',
+                'Tidak ada ramp / ramp terlalu curam',
+                'Lubang drainase / manhole terbuka',
+                'Akses kursi roda terblokir',
               ].map(item => {
                 const isSelected = obstacleType === item;
                 return (
@@ -545,61 +647,78 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </legend>
             <span className="text-[10px] font-bold text-[#42474f] flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px]">attach_file</span>
-              Lampiran
+              Lampiran Asli
             </span>
           </div>
 
-          {/* Foto Preview & Upload Simulation */}
+          {/* Foto Bukti Real Upload */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[12px] font-bold text-[#131b2e]">
                 Foto Kondisi Hambatan
               </label>
-              <span className="text-[10px] text-[#005713] bg-[#a3f69c]/30 px-2 py-0.5 rounded-md font-semibold">
-                Foto Terlampir
-              </span>
+              {photoUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setPhotoUrl('')}
+                  className="text-[10px] text-[#ba1a1a] bg-[#ffdad6]/50 px-2 py-0.5 rounded-md font-bold hover:bg-[#ffdad6]"
+                >
+                  Hapus Foto
+                </button>
+              ) : (
+                <span className="text-[10px] text-[#42474f]">JPG / PNG / Kamera</span>
+              )}
             </div>
 
-            <div className="relative rounded-2xl overflow-hidden h-36 bg-[#eaedff] border border-[#eaedff]">
-              <img
-                src={photoUrl}
-                alt="Foto Bukti Hambatan"
-                className="w-full h-full object-cover"
-                onError={e => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
-                }}
-              />
-              <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between text-white text-[10px]">
-                <span>Pratinjau Foto Bukti Lapangan</span>
-                <span className="font-mono">JPEG • GPS Tagged</span>
+            {photoUrl ? (
+              <div className="relative rounded-2xl overflow-hidden h-40 bg-[#eaedff] border border-[#eaedff]">
+                <img
+                  src={photoUrl}
+                  alt="Foto Bukti Hambatan"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between text-white text-[10px]">
+                  <span>Foto Bukti Lapangan Terlampir</span>
+                  <span className="font-mono">Siap Dikirim</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div
+                onClick={() => galleryInputRef.current?.click()}
+                className="rounded-2xl h-32 bg-[#f2f3ff] border-2 border-dashed border-[#006496]/40 hover:bg-[#eaedff] cursor-pointer flex flex-col items-center justify-center p-3 text-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-[28px] text-[#006496]">
+                  {isProcessingPhoto ? 'hourglass_top' : 'add_a_photo'}
+                </span>
+                <span className="text-[12px] font-bold text-[#00355f] mt-1">
+                  {isProcessingPhoto
+                    ? 'Memproses foto...'
+                    : 'Belum ada foto dilampirkan'}
+                </span>
+                <span className="text-[10px] text-[#42474f]">
+                  Ketuk di sini atau pilih tombol di bawah untuk mengunggah foto asli
+                </span>
+              </div>
+            )}
 
-            {/* Camera / Preset Buttons */}
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 type="button"
-                onClick={() =>
-                  setPhotoUrl(
-                    'https://lh3.googleusercontent.com/aida-public/AB6AXuDeW2V-OYmaId2o2Dqzs3AtGMysDjF_l48Ga_1tX6waVVwKdZMknFegrUgHXlM75SPmRXCN6-x76KtdjCvFSp5YeM7zDdXHS-NFVgCzYFqjrT7oGhVogzhKGDSUXA8jdkg4Lmd-pEAY8ZFjHLhFnxhQ8qh39jkM9jJRkqLNM-NTdBVNp6ZFyaSfIA4i0HYQCsX9j6FpUcwtDBnUcKtHPK9T7VidJGVXlVWXxcoSr4ueabQVmSYZHMqO'
-                  )
-                }
-                className="h-10 flex items-center justify-center gap-1.5 rounded-xl bg-[#00355f] text-white text-[11px] font-bold active:scale-95 transition-all"
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={isProcessingPhoto}
+                className="h-10 flex items-center justify-center gap-1.5 rounded-xl bg-[#00355f] text-white text-[11px] font-bold active:scale-95 transition-all disabled:opacity-60"
               >
                 <span className="material-symbols-outlined text-[16px]">photo_camera</span>
                 <span>Ambil Kamera</span>
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setPhotoUrl(
-                    'https://lh3.googleusercontent.com/aida-public/AB6AXuD1Q3FRuW7Tg0DI06kWvMJ1quckUoxg3R4k5k0kGTr4qYevnGA3RtPr5joGVFSkXoHY5LFNuN-Yr6LrqSsBuVwm9ohWi8WT5X6561fXwNRc9BZWjDP3iABe_FZiR6iKH7MmV_e8xi6A0RFQ26Qk3XDuH1CekXhj1HD1LKlMr6IA0A7w1TFLE5HQu89w-AvspmfMxNhukxKfQAbvxxubobp85FFJrIoSx2PTEGzUqFbK9-FfX_Nf3UJa'
-                  )
-                }
-                className="h-10 flex items-center justify-center gap-1.5 rounded-xl bg-[#eaedff] text-[#00355f] text-[11px] font-bold active:scale-95 transition-all"
+                onClick={() => galleryInputRef.current?.click()}
+                disabled={isProcessingPhoto}
+                className="h-10 flex items-center justify-center gap-1.5 rounded-xl bg-[#eaedff] text-[#00355f] text-[11px] font-bold active:scale-95 transition-all disabled:opacity-60"
               >
                 <span className="material-symbols-outlined text-[16px]">image</span>
-                <span>Ganti Galeri</span>
+                <span>Pilih Galeri</span>
               </button>
             </div>
           </div>
@@ -611,7 +730,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                 htmlFor="notes-area"
                 className="text-[12px] font-bold text-[#131b2e]"
               >
-                Deskripsi Singkat
+                Deskripsi Kondisi Hambatan <span className="text-[#ba1a1a]">*</span>
               </label>
               <span className="text-[10px] text-[#006496] font-semibold">
                 Bisa gunakan suara
@@ -623,10 +742,10 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                 rows={3}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
+                required
                 className="w-full p-3 pb-12 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[12px] leading-relaxed focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all resize-none"
-                placeholder="Jelaskan secara singkat kendala fisik yang dialami, dimensi kerusakan, atau patokan rute pejalan kaki..."
+                placeholder="Jelaskan kondisi kerusakan, ukuran hambatan, atau dampaknya bagi pejalan kaki / disabilitas..."
               />
-              {/* Tombol Dikte Suara */}
               <button
                 type="button"
                 onClick={handleVoiceDictation}
@@ -650,7 +769,6 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
       {/* Persistent Bottom Sticky Call-to-Action Bar */}
       <div className="sticky bottom-0 inset-x-0 p-3 bg-[#faf8ff]/95 backdrop-blur-lg shadow-xl border-t border-[#eaedff] z-40">
         <div className="flex items-center gap-2 max-w-md mx-auto">
-          {/* Quick Voice Assistance Shortcut */}
           <button
             type="button"
             onClick={handleReadSummary}
@@ -661,16 +779,15 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             <span className="material-symbols-outlined text-[24px]">volume_up</span>
           </button>
 
-          {/* Big Tactile Primary Submission Button */}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isProcessingPhoto}
             className="flex-1 h-12 px-4 rounded-xl bg-[#00355f] hover:bg-[#006496] text-white font-bold text-[14px] flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-all disabled:opacity-75"
           >
             {isSubmitting ? (
               <>
                 <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
-                <span>Menghitung Skor SAW...</span>
+                <span>Menyimpan ke Database...</span>
               </>
             ) : (
               <>
@@ -682,7 +799,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
         </div>
 
         <div className="text-center text-[10px] text-[#42474f] mt-1.5 font-medium">
-          Data langsung terhubung ke Sistem Manajemen Pengaduan Aksesibilitas Pemkab Kebumen
+          Data langsung dikirim ke Database & Command Center Admin Dinas PUPR Kebumen
         </div>
       </div>
     </form>
