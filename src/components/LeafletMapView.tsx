@@ -8,10 +8,54 @@ interface LeafletMapViewProps {
   heightClass?: string;
   isPickerMode?: boolean;
   selectedCoordinates?: { lat: number; lng: number };
-  onPickCoordinates?: (coords: { lat: number; lng: number }, name: string) => void;
+  selectedPlaceLabel?: string;
+  onPickCoordinates?: (
+    coords: { lat: number; lng: number },
+    name: string,
+    source?: 'manual' | 'gps'
+  ) => void;
   onSelectReport?: (reportId: string) => void;
   geofenceRadiusMeters?: number;
   showClusters?: boolean;
+  allowExpand?: boolean;
+  isExpanded?: boolean;
+  onToggleExpand?: (expanded: boolean) => void;
+  fullscreenTopBar?: React.ReactNode;
+  fullscreenBottomBar?: React.ReactNode;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildPickerDivIcon(label?: string): L.DivIcon {
+  const cleanLabel = (label || '').trim();
+  const displayBadge =
+    cleanLabel.length > 26
+      ? `${escapeHtml(cleanLabel.slice(0, 24))}…`
+      : cleanLabel
+      ? escapeHtml(cleanLabel)
+      : 'Titik Dipilih';
+
+  return L.divIcon({
+    html: `
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+        <div style="width: 34px; height: 34px; border-radius: 9999px; background: #00355f; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.35); border: 3px solid white; font-size: 15px;">
+          📍
+        </div>
+        <span style="background: #131b2e; color: white; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px; margin-top: 3px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.25); max-width: 190px; overflow: hidden; text-overflow: ellipsis;">
+          ${displayBadge}
+        </span>
+      </div>
+    `,
+    className: 'picker-marker',
+    iconSize: [44, 54],
+    iconAnchor: [22, 36],
+  });
 }
 
 export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
@@ -19,10 +63,15 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   heightClass = 'h-72',
   isPickerMode = false,
   selectedCoordinates,
+  selectedPlaceLabel,
   onPickCoordinates,
   onSelectReport,
   geofenceRadiusMeters = 20,
-  showClusters = false,
+  allowExpand = false,
+  isExpanded = false,
+  onToggleExpand,
+  fullscreenTopBar,
+  fullscreenBottomBar,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -30,6 +79,18 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   const userTrackingMarkerRef = useRef<L.Marker | null>(null);
   const userAccuracyCircleRef = useRef<L.Circle | null>(null);
   const pickerMarkerRef = useRef<L.Marker | null>(null);
+  const lastCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = onToggleExpand ? isExpanded : internalExpanded;
+
+  const setExpandedState = (next: boolean) => {
+    if (onToggleExpand) {
+      onToggleExpand(next);
+    } else {
+      setInternalExpanded(next);
+    }
+  };
 
   const [isLiveTracking, setIsLiveTracking] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<string | null>(null);
@@ -51,6 +112,8 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
     // Initialize Leaflet map
     const initialCoords = selectedCoordinates || KEBUMEN_CENTER;
+    lastCoordsRef.current = initialCoords;
+
     const map = L.map(mapContainerRef.current, {
       center: [initialCoords.lat, initialCoords.lng],
       zoom: 16,
@@ -62,7 +125,8 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       subdomains: ['a', 'b', 'c'],
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
     // Add custom zoom control in bottom right
@@ -76,7 +140,7 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       map.invalidateSize();
     }, 150);
 
-    // Handle container resize (e.g. tab switches, keyboard, orientation)
+    // Handle container resize (e.g. tab switches, keyboard, orientation, fullscreen toggle)
     const resizeObserver = new ResizeObserver(() => {
       map.invalidateSize();
     });
@@ -88,7 +152,8 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         const { lat, lng } = e.latlng;
         onPickCoordinatesRef.current(
           { lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)) },
-          `Koordinat Peta (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+          `Koordinat Peta (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          'manual'
         );
       }
     });
@@ -100,10 +165,45 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       }
       map.remove();
       mapInstanceRef.current = null;
+      pickerMarkerRef.current = null;
     };
   }, []);
 
-  // Update markers when reports or picker changes
+  // Re-layout tiles & lock body scroll when expanded fullscreen toggles
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (map) {
+      map.invalidateSize();
+      const timer = setTimeout(() => {
+        map.invalidateSize();
+        if (selectedCoordinates) {
+          map.setView([selectedCoordinates.lat, selectedCoordinates.lng], Math.max(map.getZoom(), 16), {
+            animate: false,
+          });
+        }
+      }, 120);
+
+      if (expanded) {
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const handleKeyDown = (ev: KeyboardEvent) => {
+          if (ev.key === 'Escape') {
+            setExpandedState(false);
+          }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+          clearTimeout(timer);
+          document.body.style.overflow = prevOverflow;
+          window.removeEventListener('keydown', handleKeyDown);
+        };
+      }
+
+      return () => clearTimeout(timer);
+    }
+  }, [expanded]);
+
+  // Update markers & fly camera when reports or selectedCoordinates change
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersLayer = markersLayerRef.current;
@@ -157,7 +257,6 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         icon: customIcon,
       });
 
-      // Geofence radius circle if requested or for clusters
       if (geofenceRadiusMeters > 0) {
         L.circle([report.coordinates.lat, report.coordinates.lng], {
           radius: geofenceRadiusMeters,
@@ -169,7 +268,6 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         }).addTo(markersLayer);
       }
 
-      // Popup content with interactive track button
       const cleanId = report.id.replace(/[^a-zA-Z0-9]/g, '');
       const popupHtml = `
         <div style="font-family: 'Plus Jakarta Sans', sans-serif; padding: 4px; min-width: 180px;">
@@ -207,7 +305,7 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         if (popupEl) {
           const btn = popupEl.querySelector(`#lacak-btn-${cleanId}`);
           if (btn) {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', e => {
               e.preventDefault();
               if (onSelectReportRef.current) {
                 onSelectReportRef.current(report.id);
@@ -220,29 +318,16 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       marker.addTo(markersLayer);
     });
 
-    // In picker mode, render designated picked coordinates
+    // In picker mode, render designated picked coordinates & smoothly fly map when coordinates change
     if (isPickerMode && selectedCoordinates) {
+      const nextIcon = buildPickerDivIcon(selectedPlaceLabel);
+
       if (pickerMarkerRef.current) {
         pickerMarkerRef.current.setLatLng([selectedCoordinates.lat, selectedCoordinates.lng]);
+        pickerMarkerRef.current.setIcon(nextIcon);
       } else {
-        const pickerIcon = L.divIcon({
-          html: `
-            <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-              <div style="width: 32px; height: 32px; border-radius: 9999px; background: #00355f; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); border: 3px solid white; font-size: 14px;">
-                📍
-              </div>
-              <span style="background: #131b2e; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 9999px; margin-top: 2px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                Titik Dipilih
-              </span>
-            </div>
-          `,
-          className: 'picker-marker',
-          iconSize: [40, 50],
-          iconAnchor: [20, 36],
-        });
-
         const newPickerMarker = L.marker([selectedCoordinates.lat, selectedCoordinates.lng], {
-          icon: pickerIcon,
+          icon: nextIcon,
           draggable: true,
         }).addTo(map);
 
@@ -252,15 +337,31 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
           if (onPickCoordinatesRef.current) {
             onPickCoordinatesRef.current(
               { lat: Number(position.lat.toFixed(5)), lng: Number(position.lng.toFixed(5)) },
-              `Koordinat Geser (${position.lat.toFixed(4)}, ${position.lng.toFixed(4)})`
+              `Koordinat Geser (${position.lat.toFixed(4)}, ${position.lng.toFixed(4)})`,
+              'manual'
             );
           }
         });
 
         pickerMarkerRef.current = newPickerMarker;
       }
+
+      const prev = lastCoordsRef.current;
+      const hasMoved =
+        !prev ||
+        Math.abs(prev.lat - selectedCoordinates.lat) > 0.00001 ||
+        Math.abs(prev.lng - selectedCoordinates.lng) > 0.00001;
+
+      if (hasMoved) {
+        lastCoordsRef.current = selectedCoordinates;
+        const targetZoom = Math.max(map.getZoom(), 17);
+        map.flyTo([selectedCoordinates.lat, selectedCoordinates.lng], targetZoom, {
+          animate: true,
+          duration: 0.6,
+        });
+      }
     }
-  }, [reports, isPickerMode, selectedCoordinates, geofenceRadiusMeters]);
+  }, [reports, isPickerMode, selectedCoordinates, selectedPlaceLabel, geofenceRadiusMeters]);
 
   // Live Real-Time GPS Tracking function
   const handleToggleTracking = () => {
@@ -271,7 +372,6 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     }
 
     if (isLiveTracking) {
-      // Stop tracking
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -284,7 +384,6 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       return;
     }
 
-    // Start live tracking
     setIsLiveTracking(true);
     setTrackingStatus('Mengunci sinyal GPS lokasi Anda...');
 
@@ -296,7 +395,6 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
         setTrackingStatus(`Lokasi Terkunci (Akurasi: ±${Math.round(accuracy)}m)`);
 
-        // Update or create user location marker
         if (!userTrackingMarkerRef.current) {
           const userIcon = L.divIcon({
             html: `
@@ -310,7 +408,9 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
             iconAnchor: [12, 12],
           });
 
-          userTrackingMarkerRef.current = L.marker([latitude, longitude], { icon: userIcon }).addTo(map);
+          userTrackingMarkerRef.current = L.marker([latitude, longitude], { icon: userIcon }).addTo(
+            map
+          );
           userAccuracyCircleRef.current = L.circle([latitude, longitude], {
             radius: accuracy,
             color: '#0284c7',
@@ -328,10 +428,11 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
           }
         }
 
-        if (isPickerMode && onPickCoordinates) {
-          onPickCoordinates(
+        if (isPickerMode && onPickCoordinatesRef.current) {
+          onPickCoordinatesRef.current(
             { lat: Number(latitude.toFixed(5)), lng: Number(longitude.toFixed(5)) },
-            `Lokasi GPS Saya (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+            `Lokasi GPS Saya (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+            'gps'
           );
         }
       },
@@ -356,68 +457,109 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   };
 
   return (
-    <div className={`relative w-full ${heightClass} rounded-2xl overflow-hidden shadow-inner border border-[#c2c7d1]/50 bg-[#e2e7ff]`}>
-      {/* Map DOM Container */}
-      <div ref={mapContainerRef} className="w-full h-full z-0" />
+    <div
+      className={
+        expanded
+          ? 'fixed inset-0 z-[100] w-screen h-[100dvh] bg-[#faf8ff] flex flex-col'
+          : `relative w-full ${heightClass} rounded-2xl overflow-hidden shadow-inner border border-[#c2c7d1]/50 bg-[#e2e7ff]`
+      }
+    >
+      {expanded && fullscreenTopBar && (
+        <div className="shrink-0 z-20 bg-white border-b border-[#eaedff] shadow-xs">
+          {fullscreenTopBar}
+        </div>
+      )}
 
-      {/* Top Floating Badges */}
-      <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1 pointer-events-none">
-        <div className="bg-[#faf8ff]/95 backdrop-blur-md px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1.5 border border-white/60 pointer-events-auto">
-          <span className="material-symbols-outlined text-[15px] text-[#00355f]">explore</span>
-          <span className="text-[11px] text-[#131b2e] font-extrabold">
-            Peta Geospasial Kebumen
-          </span>
+      <div className={expanded ? 'relative flex-1 w-full min-h-0' : 'relative w-full h-full'}>
+        {/* Map DOM Container */}
+        <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+        {/* Top Floating Badges */}
+        <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1 pointer-events-none">
+          <div className="bg-[#faf8ff]/95 backdrop-blur-md px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1.5 border border-white/60 pointer-events-auto">
+            <span className="material-symbols-outlined text-[15px] text-[#00355f]">explore</span>
+            <span className="text-[11px] text-[#131b2e] font-extrabold">
+              Peta Geospasial Kebumen
+            </span>
+          </div>
+
+          {trackingStatus && (
+            <div className="bg-[#131b2e]/90 text-white text-[10px] px-2.5 py-0.5 rounded-lg shadow-sm font-medium animate-fade-in pointer-events-auto">
+              {trackingStatus}
+            </div>
+          )}
         </div>
 
-        {trackingStatus && (
-          <div className="bg-[#131b2e]/90 text-white text-[10px] px-2.5 py-0.5 rounded-lg shadow-sm font-medium animate-fade-in pointer-events-auto">
-            {trackingStatus}
+        {/* Floating Action Buttons */}
+        <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1.5">
+          {allowExpand && (
+            <button
+              type="button"
+              onClick={() => setExpandedState(!expanded)}
+              title={expanded ? 'Kecilkan Peta' : 'Lebarkan Peta Layar Penuh'}
+              aria-label={expanded ? 'Kecilkan Peta' : 'Lebarkan Peta'}
+              className="w-9 h-9 rounded-xl bg-[#00355f] hover:bg-[#006496] text-white flex items-center justify-center shadow-md transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[19px]">
+                {expanded ? 'close_fullscreen' : 'open_in_full'}
+              </span>
+            </button>
+          )}
+
+          {/* Live GPS Area Tracking Button */}
+          <button
+            type="button"
+            onClick={handleToggleTracking}
+            title="Lacak Lokasi Real-Time Saya"
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md transition-all active:scale-95 ${
+              isLiveTracking
+                ? 'bg-[#ba1a1a] text-white animate-pulse'
+                : 'bg-white hover:bg-[#eaedff] text-[#00355f]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[19px]">
+              {isLiveTracking ? 'gps_fixed' : 'my_location'}
+            </span>
+          </button>
+
+          {/* Reset View to Alun-Alun Kebumen */}
+          <button
+            type="button"
+            onClick={handleCenterKebumen}
+            title="Pusatkan ke Alun-Alun Kebumen"
+            className="w-9 h-9 rounded-xl bg-white hover:bg-[#eaedff] text-[#00355f] flex items-center justify-center shadow-md transition-all active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[19px]">pin_drop</span>
+          </button>
+        </div>
+
+        {/* Bottom Map Legend */}
+        {!isPickerMode ? (
+          <div className="absolute bottom-2 left-2 z-10 bg-[#faf8ff]/95 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] font-bold text-[#131b2e] flex items-center gap-2 shadow-xs border border-white/60 pointer-events-none">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#ba1a1a]"></span> Kritis
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#006496]"></span> Proses
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#005713]"></span> Tuntas
+            </span>
+            <span className="text-[#42474f] font-mono">Geofence: {geofenceRadiusMeters}m</span>
+          </div>
+        ) : (
+          <div className="absolute bottom-2 left-2 z-10 bg-[#faf8ff]/95 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] font-bold text-[#00355f] flex items-center gap-1.5 shadow-xs border border-white/70 pointer-events-none">
+            <span className="material-symbols-outlined text-[14px]">touch_app</span>
+            <span>Ketuk peta / geser pin 📍 untuk atur titik</span>
           </div>
         )}
       </div>
 
-      {/* Floating Action Buttons */}
-      <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1.5">
-        {/* Live GPS Area Tracking Button */}
-        <button
-          type="button"
-          onClick={handleToggleTracking}
-          title="Lacak Lokasi Real-Time Saya"
-          className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md transition-all active:scale-95 ${
-            isLiveTracking
-              ? 'bg-[#ba1a1a] text-white animate-pulse'
-              : 'bg-white hover:bg-[#eaedff] text-[#00355f]'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[19px]">
-            {isLiveTracking ? 'gps_fixed' : 'my_location'}
-          </span>
-        </button>
-
-        {/* Reset View to Alun-Alun Kebumen */}
-        <button
-          type="button"
-          onClick={handleCenterKebumen}
-          title="Pusatkan ke Alun-Alun Kebumen"
-          className="w-9 h-9 rounded-xl bg-white hover:bg-[#eaedff] text-[#00355f] flex items-center justify-center shadow-md transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined text-[19px]">pin_drop</span>
-        </button>
-      </div>
-
-      {/* Bottom Map Legend */}
-      <div className="absolute bottom-2 left-2 z-10 bg-[#faf8ff]/95 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] font-bold text-[#131b2e] flex items-center gap-2 shadow-xs border border-white/60 pointer-events-none">
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-[#ba1a1a]"></span> Kritis
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-[#006496]"></span> Proses
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-[#005713]"></span> Tuntas
-        </span>
-        <span className="text-[#42474f] font-mono">Geofence: {geofenceRadiusMeters}m</span>
-      </div>
+      {expanded && fullscreenBottomBar && (
+        <div className="shrink-0 z-20 bg-white border-t border-[#eaedff] shadow-lg">
+          {fullscreenBottomBar}
+        </div>
+      )}
     </div>
   );
 };

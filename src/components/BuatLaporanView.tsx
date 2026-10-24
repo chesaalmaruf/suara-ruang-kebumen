@@ -1,6 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FacilityCategory, ReportItem, SeverityLevel } from '../types';
 import { compressImageFile, formatCurrentWibTime } from '../utils/imageHelper';
+import {
+  PlaceSuggestion,
+  reverseGeocodePoint,
+  searchLocalKebumenPlaces,
+  searchPlacesHybrid,
+} from '../utils/placeSearch';
 import { calculateRawCriteria, computeSawScore } from '../utils/sawCalculator';
 import { DictationService, speakText } from '../utils/speechHelper';
 import { LeafletMapView } from './LeafletMapView';
@@ -42,7 +48,30 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const [placeName, setPlaceName] = useState(initialPlaceName);
   const [district, setDistrict] = useState('Kebumen');
   const [address, setAddress] = useState('');
-  const [coordinates, setCoordinates] = useState({ lat: -7.6748, lng: 109.6575 });
+  const [isAddressAutoFilled, setIsAddressAutoFilled] = useState(false);
+  const [coordinates, setCoordinates] = useState({ lat: -7.66875, lng: 109.6521 });
+
+  // Place search & interactive map states
+  const [placeSuggestions, setPlaceSuggestions] = useState<PlaceSuggestion[]>(() =>
+    searchLocalKebumenPlaces(initialPlaceName)
+  );
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [showPlaceDropdown, setShowPlaceDropdown] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [pinStatus, setPinStatus] = useState<
+    'idle' | 'auto_pinned' | 'manual_needed' | 'manual_pinned' | 'gps_pinned'
+  >('idle');
+
+  // Fullscreen / expanded map states
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [fullscreenQuery, setFullscreenQuery] = useState('');
+  const [fullscreenSuggestions, setFullscreenSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isSearchingFullscreen, setIsSearchingFullscreen] = useState(false);
+  const [showFullscreenDropdown, setShowFullscreenDropdown] = useState(false);
+
+  const placeSearchBoxRef = useRef<HTMLDivElement>(null);
+  const mapSectionRef = useRef<HTMLDivElement>(null);
+  const reverseGeoAbortRef = useRef<AbortController | null>(null);
 
   const [category, setCategory] = useState<FacilityCategory>('public_space');
   const [obstacleType, setObstacleType] = useState('Trotoar rusak atau terhalang');
@@ -56,6 +85,183 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  // Close autocomplete dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        placeSearchBoxRef.current &&
+        !placeSearchBoxRef.current.contains(e.target as Node)
+      ) {
+        setShowPlaceDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Auto-resolve initialPlaceName if navigated from another screen
+  useEffect(() => {
+    if (!initialPlaceName.trim()) return;
+    const localHits = searchLocalKebumenPlaces(initialPlaceName);
+    if (localHits.length > 0) {
+      const top = localHits[0];
+      setCoordinates({ lat: top.lat, lng: top.lng });
+      if (top.district && KEBUMEN_DISTRICTS.includes(top.district)) {
+        setDistrict(top.district);
+      }
+      setAddress(top.address);
+      setIsAddressAutoFilled(true);
+      setPinStatus('auto_pinned');
+    }
+  }, [initialPlaceName]);
+
+  // Debounced hybrid search for #place-name-input
+  useEffect(() => {
+    const q = placeName.trim();
+    const instantLocal = searchLocalKebumenPlaces(q);
+    setPlaceSuggestions(instantLocal);
+    setHighlightedIndex(-1);
+
+    if (q.length < 2) {
+      setIsSearchingPlaces(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsSearchingPlaces(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchPlacesHybrid(q, controller.signal);
+        setPlaceSuggestions(results);
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          setPlaceSuggestions(instantLocal);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearchingPlaces(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [placeName]);
+
+  // Debounced hybrid search inside Fullscreen Map top bar
+  useEffect(() => {
+    if (!isMapExpanded) return;
+    const q = fullscreenQuery.trim();
+    const instantLocal = searchLocalKebumenPlaces(q);
+    setFullscreenSuggestions(instantLocal);
+
+    if (q.length < 2) {
+      setIsSearchingFullscreen(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsSearchingFullscreen(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchPlacesHybrid(q, controller.signal);
+        setFullscreenSuggestions(results);
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          setFullscreenSuggestions(instantLocal);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearchingFullscreen(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [fullscreenQuery, isMapExpanded]);
+
+  const isGenericAutoPlaceLabel = (val: string) => {
+    const trimmed = val.trim();
+    return (
+      !trimmed ||
+      trimmed.startsWith('Koordinat Peta (') ||
+      trimmed.startsWith('Koordinat Geser (') ||
+      trimmed.startsWith('Lokasi GPS Saya (')
+    );
+  };
+
+  const handleSelectSuggestion = (item: PlaceSuggestion) => {
+    setPlaceName(item.name);
+    setFullscreenQuery(item.name);
+    setCoordinates({ lat: item.lat, lng: item.lng });
+    if (item.district && KEBUMEN_DISTRICTS.includes(item.district)) {
+      setDistrict(item.district);
+    }
+    if (!address.trim() || isAddressAutoFilled) {
+      setAddress(item.address);
+      setIsAddressAutoFilled(true);
+    }
+    setPinStatus('auto_pinned');
+    setShowPlaceDropdown(false);
+    setShowFullscreenDropdown(false);
+  };
+
+  const handleActivateManualMapPin = (expandMap = false) => {
+    setShowPlaceDropdown(false);
+    setPinStatus('manual_needed');
+    if (expandMap) {
+      setFullscreenQuery(placeName);
+      setIsMapExpanded(true);
+    } else {
+      mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const handleMapPickCoordinates = async (
+    coords: { lat: number; lng: number },
+    fallbackLabel: string,
+    source?: 'manual' | 'gps'
+  ) => {
+    setCoordinates(coords);
+    setPinStatus(source === 'gps' ? 'gps_pinned' : 'manual_pinned');
+    setShowPlaceDropdown(false);
+    setShowFullscreenDropdown(false);
+
+    // Keep user's custom place name if they already typed one!
+    const shouldFillPlaceName = isGenericAutoPlaceLabel(placeName);
+    if (shouldFillPlaceName && !placeName.trim()) {
+      setPlaceName(fallbackLabel);
+    }
+
+    // Reverse geocode in background to enrich street address & kecamatan
+    if (reverseGeoAbortRef.current) {
+      reverseGeoAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    reverseGeoAbortRef.current = controller;
+
+    const rev = await reverseGeocodePoint(coords.lat, coords.lng, controller.signal);
+    if (!rev || controller.signal.aborted) return;
+
+    if (shouldFillPlaceName && rev.roadOrPlace) {
+      setPlaceName(rev.roadOrPlace);
+    }
+    if (rev.district && KEBUMEN_DISTRICTS.includes(rev.district)) {
+      setDistrict(rev.district);
+    }
+    if (rev.fullAddress && (!address.trim() || isAddressAutoFilled)) {
+      setAddress(rev.fullAddress);
+      setIsAddressAutoFilled(true);
+    }
+  };
 
   // Dictation state
   const [isDictating, setIsDictating] = useState(false);
@@ -326,28 +532,199 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </span>
           </div>
 
-          {/* Kolom Nama Tempat */}
-          <div className="space-y-1">
-            <label
-              className="block text-[12px] font-bold text-[#131b2e]"
-              htmlFor="place-name-input"
-            >
-              Nama Tempat / Fasilitas <span className="text-[#ba1a1a]">*</span>
-            </label>
+          {/* Kolom Nama Tempat (Terintegrasi Pencarian Peta & Auto-Pin) */}
+          <div ref={placeSearchBoxRef} className="space-y-1 relative">
+            <div className="flex items-center justify-between">
+              <label
+                className="block text-[12px] font-bold text-[#131b2e]"
+                htmlFor="place-name-input"
+              >
+                Nama Tempat / Fasilitas <span className="text-[#ba1a1a]">*</span>
+              </label>
+              <span className="text-[10px] font-semibold text-[#006496]">
+                Ketik untuk cari & tandai otomatis
+              </span>
+            </div>
+
             <div className="relative flex items-center">
-              <span className="material-symbols-outlined absolute left-3 text-[#00355f] text-[18px]">
-                pin_drop
+              <span className="material-symbols-outlined absolute left-3 text-[#00355f] text-[18px] pointer-events-none">
+                search
               </span>
               <input
                 id="place-name-input"
                 type="text"
+                autoComplete="off"
                 value={placeName}
-                onChange={e => setPlaceName(e.target.value)}
+                onFocus={() => setShowPlaceDropdown(true)}
+                onChange={e => {
+                  setPlaceName(e.target.value);
+                  setShowPlaceDropdown(true);
+                  if (pinStatus === 'auto_pinned') {
+                    setPinStatus('idle');
+                  }
+                }}
+                onKeyDown={e => {
+                  if (!showPlaceDropdown) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightedIndex(prev =>
+                      placeSuggestions.length > 0 ? (prev + 1) % placeSuggestions.length : -1
+                    );
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightedIndex(prev =>
+                      placeSuggestions.length > 0
+                        ? (prev - 1 + placeSuggestions.length) % placeSuggestions.length
+                        : -1
+                    );
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (highlightedIndex >= 0 && placeSuggestions[highlightedIndex]) {
+                      handleSelectSuggestion(placeSuggestions[highlightedIndex]);
+                    } else if (placeSuggestions.length > 0) {
+                      handleSelectSuggestion(placeSuggestions[0]);
+                    } else if (placeName.trim()) {
+                      handleActivateManualMapPin(false);
+                    }
+                  } else if (e.key === 'Escape') {
+                    setShowPlaceDropdown(false);
+                  }
+                }}
                 required
-                className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[13px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all"
-                placeholder="Ketik nama tempat / fasilitas umum..."
+                className="w-full h-11 pl-10 pr-9 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[13px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all"
+                placeholder="Cari nama tempat, jalan, atau fasilitas umum..."
               />
+
+              {isSearchingPlaces ? (
+                <div className="absolute right-3 w-4 h-4 rounded-full border-2 border-[#00355f] border-t-transparent animate-spin" />
+              ) : (
+                placeName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlaceName('');
+                      setPinStatus('idle');
+                      setShowPlaceDropdown(true);
+                    }}
+                    aria-label="Bersihkan nama tempat"
+                    className="absolute right-2.5 w-6 h-6 rounded-full hover:bg-[#dae2fd] text-[#42474f] flex items-center justify-center transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">close</span>
+                  </button>
+                )
+              )}
             </div>
+
+            {/* Dropdown Hasil Pencarian Tempat */}
+            {showPlaceDropdown && (
+              <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 bg-white rounded-2xl shadow-xl border border-[#c2c7d1]/70 overflow-hidden">
+                {placeSuggestions.length > 0 ? (
+                  <>
+                    <div className="px-3 py-1.5 bg-[#f2f3ff] border-b border-[#eaedff] flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-[#00355f]">
+                        {placeName.trim()
+                          ? 'Pilih lokasi untuk langsung ditandai di peta'
+                          : 'Rekomendasi Fasilitas Umum Kebumen'}
+                      </span>
+                      {isSearchingPlaces && (
+                        <span className="text-[10px] text-[#006496] font-medium">Mencari...</span>
+                      )}
+                    </div>
+                    <ul className="max-h-56 overflow-y-auto divide-y divide-[#f2f3ff]">
+                      {placeSuggestions.map((item, idx) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => handleSelectSuggestion(item)}
+                            className={`w-full px-3 py-2.5 text-left flex items-start gap-2.5 transition-colors ${
+                              idx === highlightedIndex
+                                ? 'bg-[#d2e4ff]/70'
+                                : 'hover:bg-[#f2f3ff]'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-[18px] text-[#00355f] mt-0.5 shrink-0">
+                              location_on
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[12px] font-bold text-[#131b2e] truncate">
+                                  {item.name}
+                                </span>
+                                {item.district && (
+                                  <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#eaedff] text-[#00355f]">
+                                    Kec. {item.district}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-[#42474f] line-clamp-1 mt-0.5">
+                                {item.address}
+                              </p>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {placeName.trim().length >= 2 && (
+                      <div className="px-3 py-2 bg-[#faf8ff] border-t border-[#eaedff] flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-[#42474f]">
+                          Bukan lokasi yang dimaksud?
+                        </span>
+                        <button
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => handleActivateManualMapPin(false)}
+                          className="text-[11px] font-bold text-[#00355f] hover:underline flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">pin_drop</span>
+                          Tandai Manual di Peta
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : !isSearchingPlaces && placeName.trim().length >= 2 ? (
+                  <div className="p-3.5 space-y-2.5 bg-white">
+                    <div className="flex items-start gap-2.5">
+                      <span className="material-symbols-outlined text-[20px] text-[#006496] mt-0.5 shrink-0">
+                        edit_location_alt
+                      </span>
+                      <div className="space-y-0.5">
+                        <p className="text-[12px] font-bold text-[#131b2e]">
+                          &ldquo;{placeName.trim()}&rdquo; belum terdaftar di pencarian peta
+                        </p>
+                        <p className="text-[11px] text-[#42474f] leading-snug">
+                          Nama tempat tetap disimpan. Silakan tandai titik lokasinya secara manual pada peta di bawah.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => handleActivateManualMapPin(false)}
+                        className="h-9 px-2.5 rounded-xl bg-[#eaedff] hover:bg-[#d2e4ff] text-[#00355f] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">touch_app</span>
+                        <span>Tandai di Peta</span>
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => handleActivateManualMapPin(true)}
+                        className="h-9 px-2.5 rounded-xl bg-[#00355f] hover:bg-[#006496] text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">open_in_full</span>
+                        <span>Lebarkan & Tandai</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 text-center text-[11px] text-[#42474f]">
+                    Mencari lokasi di wilayah Kebumen...
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Kolom Kecamatan */}
@@ -384,7 +761,10 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               id="address-input"
               rows={2}
               value={address}
-              onChange={e => setAddress(e.target.value)}
+              onChange={e => {
+                setAddress(e.target.value);
+                setIsAddressAutoFilled(false);
+              }}
               required
               className="w-full p-3 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[12px] leading-relaxed focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all resize-none"
               placeholder="Tuliskan nama jalan, patokan gedung, atau detail titik lokasi..."
@@ -392,28 +772,223 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           </div>
 
           {/* Titik Lokasi pada Peta Interaktif */}
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between">
+          <div ref={mapSectionRef} className="space-y-2 pt-1">
+            <div className="flex items-center justify-between gap-2">
               <label className="text-[12px] font-bold text-[#131b2e] flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[#006496] text-[18px]">map</span>
-                Titik Koordinat Peta (Ketuk / Geser Pin)
+                Titik Koordinat Peta
               </label>
-              <span className="px-2 py-0.5 rounded-full bg-[#eaedff] text-[#00355f] text-[10px] font-bold">
-                GPS Interaktif
-              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFullscreenQuery(placeName);
+                  setIsMapExpanded(true);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#00355f] hover:bg-[#006496] text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all"
+              >
+                <span className="material-symbols-outlined text-[14px]">open_in_full</span>
+                <span>Lebarkan Peta</span>
+              </button>
             </div>
+
+            {pinStatus === 'auto_pinned' && (
+              <div className="px-3 py-1.5 rounded-xl bg-[#d8f8d3] text-[#00390a] text-[11px] font-semibold flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">where_to_vote</span>
+                <span>Lokasi otomatis ditandai di peta. Geser pin jika ingin lebih presisi.</span>
+              </div>
+            )}
+
+            {pinStatus === 'manual_needed' && (
+              <div className="px-3 py-1.5 rounded-xl bg-[#d2e4ff] text-[#001c37] text-[11px] font-semibold flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">touch_app</span>
+                <span>
+                  Mode Tandai Manual: Ketuk titik lokasi pada peta atau lebarkan peta agar lebih jelas.
+                </span>
+              </div>
+            )}
+
+            {(pinStatus === 'manual_pinned' || pinStatus === 'gps_pinned') && (
+              <div className="px-3 py-1.5 rounded-xl bg-[#eaedff] text-[#00355f] text-[11px] font-semibold flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                <span>
+                  {pinStatus === 'gps_pinned'
+                    ? 'Titik lokasi dikunci melalui GPS perangkat Anda.'
+                    : 'Titik lokasi berhasil ditandai secara manual di peta.'}
+                </span>
+              </div>
+            )}
 
             <LeafletMapView
               reports={[]}
-              heightClass="h-44"
+              heightClass="h-52"
               isPickerMode={true}
               selectedCoordinates={coordinates}
-              onPickCoordinates={(coords, label) => {
-                setCoordinates(coords);
-                if (!placeName.trim()) {
-                  setPlaceName(label);
-                }
+              selectedPlaceLabel={placeName || 'Titik Lokasi'}
+              onPickCoordinates={handleMapPickCoordinates}
+              allowExpand={true}
+              isExpanded={isMapExpanded}
+              onToggleExpand={next => {
+                if (next) setFullscreenQuery(placeName);
+                setIsMapExpanded(next);
               }}
+              fullscreenTopBar={
+                <div className="p-3 max-w-3xl mx-auto w-full space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsMapExpanded(false)}
+                      className="h-9 px-3 rounded-xl bg-[#f2f3ff] hover:bg-[#eaedff] text-[#131b2e] text-[12px] font-bold inline-flex items-center gap-1.5 transition-colors shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        close_fullscreen
+                      </span>
+                      <span>Kecilkan</span>
+                    </button>
+                    <span className="text-[13px] font-extrabold text-[#131b2e] truncate">
+                      Pilih & Tandai Titik Lokasi Kejadian
+                    </span>
+                    <div className="w-8 sm:w-16 shrink-0" />
+                  </div>
+
+                  {/* Pencarian Tempat langsung di dalam Peta Lebar */}
+                  <div className="relative">
+                    <div className="relative flex items-center">
+                      <span className="material-symbols-outlined absolute left-3 text-[#00355f] text-[18px] pointer-events-none">
+                        search
+                      </span>
+                      <input
+                        type="text"
+                        value={fullscreenQuery}
+                        onFocus={() => setShowFullscreenDropdown(true)}
+                        onChange={e => {
+                          setFullscreenQuery(e.target.value);
+                          setShowFullscreenDropdown(true);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (fullscreenSuggestions.length > 0) {
+                              handleSelectSuggestion(fullscreenSuggestions[0]);
+                            } else if (fullscreenQuery.trim()) {
+                              setPlaceName(fullscreenQuery.trim());
+                              setShowFullscreenDropdown(false);
+                            }
+                          } else if (e.key === 'Escape') {
+                            e.stopPropagation();
+                            setShowFullscreenDropdown(false);
+                          }
+                        }}
+                        placeholder="Cari nama tempat / jalan di Kebumen, atau langsung ketuk peta..."
+                        className="w-full h-10 pl-10 pr-9 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[13px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f]"
+                      />
+                      {isSearchingFullscreen ? (
+                        <div className="absolute right-3 w-4 h-4 rounded-full border-2 border-[#00355f] border-t-transparent animate-spin" />
+                      ) : (
+                        fullscreenQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFullscreenQuery('');
+                              setShowFullscreenDropdown(true);
+                            }}
+                            className="absolute right-2.5 w-6 h-6 rounded-full hover:bg-[#dae2fd] text-[#42474f] flex items-center justify-center"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">close</span>
+                          </button>
+                        )
+                      )}
+                    </div>
+
+                    {showFullscreenDropdown && (
+                      <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 bg-white rounded-2xl shadow-xl border border-[#c2c7d1]/70 overflow-hidden">
+                        {fullscreenSuggestions.length > 0 ? (
+                          <ul className="max-h-52 overflow-y-auto divide-y divide-[#f2f3ff]">
+                            {fullscreenSuggestions.map(item => (
+                              <li key={`fs-${item.id}`}>
+                                <button
+                                  type="button"
+                                  onMouseDown={e => e.preventDefault()}
+                                  onClick={() => handleSelectSuggestion(item)}
+                                  className="w-full px-3 py-2.5 text-left hover:bg-[#f2f3ff] flex items-start gap-2.5"
+                                >
+                                  <span className="material-symbols-outlined text-[18px] text-[#00355f] mt-0.5 shrink-0">
+                                    location_on
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[12px] font-bold text-[#131b2e] truncate">
+                                        {item.name}
+                                      </span>
+                                      {item.district && (
+                                        <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#eaedff] text-[#00355f]">
+                                          Kec. {item.district}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-[#42474f] line-clamp-1">
+                                      {item.address}
+                                    </p>
+                                  </div>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : !isSearchingFullscreen && fullscreenQuery.trim().length >= 2 ? (
+                          <div className="p-3 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-[#42474f]">
+                              Tidak ditemukan di pencarian. Ketuk langsung titiknya di peta.
+                            </span>
+                            <button
+                              type="button"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => {
+                                setPlaceName(fullscreenQuery.trim());
+                                setShowFullscreenDropdown(false);
+                              }}
+                              className="shrink-0 px-3 py-1.5 rounded-lg bg-[#00355f] text-white text-[11px] font-bold"
+                            >
+                              Gunakan Nama & Tandai Manual
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              }
+              fullscreenBottomBar={
+                <div className="p-3 sm:p-4 max-w-3xl mx-auto w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px] text-[#00355f] shrink-0">
+                        pin_drop
+                      </span>
+                      <p className="text-[13px] font-extrabold text-[#131b2e] truncate">
+                        {placeName || 'Titik Lokasi Dipilih'}
+                      </p>
+                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-[#eaedff] text-[#00355f]">
+                        Kec. {district}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#42474f] line-clamp-1">
+                      {address || 'Ketuk titik pada peta atau geser pin 📍 untuk menyesuaikan lokasi'}
+                    </p>
+                    <p className="text-[10px] font-mono text-[#006496]">
+                      Koordinat: {coordinates.lat}, {coordinates.lng}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsMapExpanded(false)}
+                    className="h-11 px-5 rounded-xl bg-[#00355f] hover:bg-[#006496] text-white text-[13px] font-bold flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    <span>Gunakan Titik Lokasi Ini</span>
+                  </button>
+                </div>
+              }
             />
 
             <div className="flex items-center justify-between gap-2 text-[11px] text-[#42474f] font-mono">
@@ -424,7 +999,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                 {coordinates.lat}, {coordinates.lng}
               </span>
               <span className="text-[10px] font-sans text-[#006496] font-semibold">
-                Ketuk peta untuk pindah pin
+                Ketuk peta / geser pin untuk koreksi manual
               </span>
             </div>
           </div>
