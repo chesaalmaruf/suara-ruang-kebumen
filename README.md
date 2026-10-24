@@ -111,6 +111,8 @@ Modul pemetaan menggunakan **Leaflet API** di atas jaringan peta **OpenStreetMap
    - Di dalam mode layar penuh tersedia bilah pencarian tempat langsung di atas peta, tombol pengunci GPS, petunjuk interaktif, serta bilah konfirmasi koordinat di bagian bawah layar.
 4. **Pelacakan GPS Langsung & Geofencing Klaster**:
    - Tombol **Gunakan GPS Saat Ini** mengaktifkan pelacakan posisi akurat (`navigator.geolocation`) disertai indikator akurasi meter, sementara di sisi Admin sistem menampilkan radius *geofencing* (`10m / 20m / 50m`) untuk mendeteksi laporan berdekatan di titik kerusakan yang sama.
+5. **Pengalih Mode Tampilan Peta (`Default` & `Satelit`)**:
+   - Di pojok kiri atas seluruh peta (Beranda, Buat Laporan, Peta Layar Penuh, hingga Peta Admin) tersedia tombol pengalih instan **`Default`** (peta jalan standar *OpenStreetMap*) dan **`Satelit`** (citra satelit resolusi tinggi *Esri World Imagery* lengkap dengan lapisan nama jalan dan penanda tempat hibrida seperti pada Google Maps).
 
 ---
 

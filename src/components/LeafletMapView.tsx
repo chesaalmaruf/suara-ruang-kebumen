@@ -92,6 +92,12 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     }
   };
 
+  const [mapStyle, setMapStyle] = useState<'default' | 'satellite'>('default');
+  const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
+  const layerMenuRef = useRef<HTMLDivElement>(null);
+  const defaultLayerRef = useRef<L.TileLayer | null>(null);
+  const satelliteLayerRef = useRef<L.LayerGroup | null>(null);
+
   const [isLiveTracking, setIsLiveTracking] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -117,17 +123,52 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     const map = L.map(mapContainerRef.current, {
       center: [initialCoords.lat, initialCoords.lng],
       zoom: 16,
+      maxZoom: 20,
       zoomControl: false,
       attributionControl: false,
     });
 
-    // Add standard OpenStreetMap tiles (free, reliable, no API key required)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
+    // 1. Default Street Layer (OpenStreetMap)
+    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxNativeZoom: 19,
+      maxZoom: 20,
       subdomains: ['a', 'b', 'c'],
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    });
+
+    // 2. Satellite Hybrid Layer (Esri World Imagery + Roads & Place Labels like Google Maps Satellite)
+    const esriImagery = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxNativeZoom: 18,
+        maxZoom: 20,
+        attribution: 'Tiles &copy; Esri',
+      }
+    );
+    const esriTransportation = L.tileLayer(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxNativeZoom: 18,
+        maxZoom: 20,
+        opacity: 0.85,
+      }
+    );
+    const esriPlaces = L.tileLayer(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxNativeZoom: 18,
+        maxZoom: 20,
+        opacity: 0.95,
+      }
+    );
+    const satGroup = L.layerGroup([esriImagery, esriTransportation, esriPlaces]);
+
+    defaultLayerRef.current = osmLayer;
+    satelliteLayerRef.current = satGroup;
+
+    // Start with Default map view
+    osmLayer.addTo(map);
 
     // Add custom zoom control in bottom right
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -146,8 +187,13 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     });
     resizeObserver.observe(mapContainerRef.current);
 
-    // Handle map clicks in picker mode
+    // Handle map clicks & drags (also close compact layer menu)
+    map.on('movestart', () => {
+      setIsLayerMenuOpen(false);
+    });
+
     map.on('click', (e: L.LeafletMouseEvent) => {
+      setIsLayerMenuOpen(false);
       if (isPickerModeRef.current && onPickCoordinatesRef.current) {
         const { lat, lng } = e.latlng;
         onPickCoordinatesRef.current(
@@ -165,9 +211,39 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       }
       map.remove();
       mapInstanceRef.current = null;
+      defaultLayerRef.current = null;
+      satelliteLayerRef.current = null;
       pickerMarkerRef.current = null;
     };
   }, []);
+
+  // Switch between Default (OSM) and Satellite (Esri Hybrid) tile layers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const osmLayer = defaultLayerRef.current;
+    const satGroup = satelliteLayerRef.current;
+    if (!map || !osmLayer || !satGroup) return;
+
+    if (mapStyle === 'satellite') {
+      if (map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
+      if (!map.hasLayer(satGroup)) satGroup.addTo(map);
+    } else {
+      if (map.hasLayer(satGroup)) map.removeLayer(satGroup);
+      if (!map.hasLayer(osmLayer)) osmLayer.addTo(map);
+    }
+  }, [mapStyle]);
+
+  // Close compact layer menu when clicking outside
+  useEffect(() => {
+    if (!isLayerMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (layerMenuRef.current && !layerMenuRef.current.contains(e.target as Node)) {
+        setIsLayerMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [isLayerMenuOpen]);
 
   // Re-layout tiles & lock body scroll when expanded fullscreen toggles
   useEffect(() => {
@@ -474,13 +550,76 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         {/* Map DOM Container */}
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-        {/* Top Floating Badges */}
-        <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1 pointer-events-none">
-          <div className="bg-[#faf8ff]/95 backdrop-blur-md px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1.5 border border-white/60 pointer-events-auto">
-            <span className="material-symbols-outlined text-[15px] text-[#00355f]">explore</span>
-            <span className="text-[11px] text-[#131b2e] font-extrabold">
-              Peta Geospasial Kebumen
-            </span>
+        {/* Top-Left Compact Layers Button & Tracking Toast */}
+        <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1.5 pointer-events-none">
+          <div ref={layerMenuRef} className="relative pointer-events-auto w-fit">
+            <button
+              type="button"
+              onClick={() => setIsLayerMenuOpen(prev => !prev)}
+              title="Ubah Lapisan Peta (Default / Satelit)"
+              aria-label="Lapisan Peta"
+              aria-expanded={isLayerMenuOpen}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md border transition-all active:scale-95 ${
+                mapStyle === 'satellite' || isLayerMenuOpen
+                  ? 'bg-[#00355f] text-white border-[#00355f]'
+                  : 'bg-white/95 hover:bg-[#eaedff] text-[#00355f] border-[#c2c7d1]/70'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[19px]">layers</span>
+            </button>
+
+            {isLayerMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Pilih tampilan peta"
+                className="absolute left-0 top-[calc(100%+6px)] bg-white/95 backdrop-blur-md p-1 rounded-xl shadow-lg border border-[#c2c7d1]/70 flex flex-col gap-0.5 min-w-[116px]"
+              >
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={mapStyle === 'default'}
+                  onClick={() => {
+                    setMapStyle('default');
+                    setIsLayerMenuOpen(false);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-between gap-2 transition-colors ${
+                    mapStyle === 'default'
+                      ? 'bg-[#00355f] text-white'
+                      : 'text-[#131b2e] hover:bg-[#f2f3ff]'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[15px]">map</span>
+                    <span>Default</span>
+                  </span>
+                  {mapStyle === 'default' && (
+                    <span className="material-symbols-outlined text-[14px]">check</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={mapStyle === 'satellite'}
+                  onClick={() => {
+                    setMapStyle('satellite');
+                    setIsLayerMenuOpen(false);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-between gap-2 transition-colors ${
+                    mapStyle === 'satellite'
+                      ? 'bg-[#00355f] text-white'
+                      : 'text-[#131b2e] hover:bg-[#f2f3ff]'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[15px]">satellite_alt</span>
+                    <span>Satelit</span>
+                  </span>
+                  {mapStyle === 'satellite' && (
+                    <span className="material-symbols-outlined text-[14px]">check</span>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
           {trackingStatus && (
