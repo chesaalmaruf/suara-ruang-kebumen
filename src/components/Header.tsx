@@ -42,8 +42,12 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {/* Logo Badge */}
-          <div className="h-9 w-9 rounded-xl bg-[#00355f] text-white flex items-center justify-center flex-shrink-0 shadow-sm font-black text-xs tracking-tighter">
-            <span className="material-symbols-outlined text-[20px] text-[#7fc5fd]">accessible_forward</span>
+          <div className="h-10 w-10 rounded-xl bg-white p-0.5 flex items-center justify-center flex-shrink-0 shadow-xs border border-[#eaedff] overflow-hidden">
+            <img
+              src="/assets/aistudio/logo_7cbe31cf.png"
+              alt="Logo Suara Ruang Kebumen"
+              className="w-full h-full object-contain"
+            />
           </div>
 
           <div className="flex flex-col min-w-0">

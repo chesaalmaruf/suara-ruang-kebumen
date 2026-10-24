@@ -964,8 +964,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="p-5 space-y-6 overflow-y-auto">
           {/* Brand Identity */}
           <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-            <div className="w-9 h-9 rounded-lg bg-[#00355f] text-white flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-lg bg-white p-0.5 border border-slate-200/80 shadow-2xs flex items-center justify-center shrink-0 overflow-hidden">
+              <img
+                src="/assets/aistudio/logo_7cbe31cf.png"
+                alt="Logo Suara Ruang Kebumen"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold tracking-tight text-slate-900 truncate">
@@ -1075,8 +1079,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-[#00355f] text-white flex items-center justify-center">
-                    <Building2 className="w-4 h-4" />
+                  <div className="w-9 h-9 rounded-lg bg-white p-0.5 border border-slate-200/80 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img
+                      src="/assets/aistudio/logo_7cbe31cf.png"
+                      alt="Logo Suara Ruang Kebumen"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-900">SUARA RUANG</p>
