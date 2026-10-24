@@ -6,7 +6,6 @@ import { BottomNav } from './components/BottomNav';
 import { BuatLaporanView } from './components/BuatLaporanView';
 import { Header } from './components/Header';
 import { LacakLaporanView } from './components/LacakLaporanView';
-import { PortalSwitcherBar } from './components/PortalSwitcherBar';
 import { LEGACY_DUMMY_IDS } from './data/initialData';
 import { ReportItem } from './types';
 import { rankReportsBySaw } from './utils/sawCalculator';
@@ -220,15 +219,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f0f4f9] text-[#131b2e] flex flex-col justify-start selection:bg-[#7fc5fd]/30">
-      <PortalSwitcherBar
-        currentPortal={currentPortal}
-        onSwitchPortal={navigatePortal}
-        dbStatus={dbStatus}
-      />
-
       {/* PORTAL 1: CITIZEN / WARGA PORTAL */}
       {currentPortal === 'citizen' && (
-        <div className="w-full max-w-md bg-[#faf8ff] min-h-[calc(100vh-32px)] flex flex-col relative mx-auto shadow-2xl border-x border-[#eaedff]">
+        <div className="w-full max-w-md bg-[#faf8ff] min-h-screen flex flex-col relative mx-auto shadow-2xl border-x border-[#eaedff]">
           <Header
             currentTab={citizenTab}
             onTabChange={tab => {
@@ -291,12 +284,9 @@ export default function App() {
 
       {/* PORTAL 2: ADMIN DINAS PUPR PORTAL (FULL RESPONSIVE WORKSPACE) */}
       {currentPortal === 'admin' && (
-        <div className="w-full flex-1 flex flex-col bg-slate-50 min-h-[calc(100vh-36px)]">
+        <div className="w-full flex-1 flex flex-col bg-slate-50 min-h-screen">
           {!isAdminLoggedIn ? (
-            <AdminLogin
-              onLoginSuccess={handleAdminLoginSuccess}
-              onBackToCitizen={() => navigatePortal('citizen')}
-            />
+            <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />
           ) : (
             <AdminPortal
               reports={reports}

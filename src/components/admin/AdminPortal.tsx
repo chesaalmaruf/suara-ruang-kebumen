@@ -937,7 +937,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   return (
-    <div className="min-h-[calc(100vh-36px)] w-full bg-slate-50 text-slate-900 flex flex-col lg:flex-row">
+    <div className="min-h-screen w-full bg-slate-50 text-slate-900 flex flex-col lg:flex-row">
       {/* Hidden input for real compressed after-photo upload */}
       <input
         ref={afterPhotoInputRef}
@@ -961,7 +961,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* =========================================================================
           DESKTOP SIDEBAR NAVIGATION (lg and up)
           ========================================================================= */}
-      <aside className="hidden lg:flex lg:w-64 xl:w-72 shrink-0 bg-white border-r border-slate-200 flex-col justify-between sticky top-0 h-[calc(100vh-36px)] print:hidden">
+      <aside className="hidden lg:flex lg:w-64 xl:w-72 shrink-0 bg-white border-r border-slate-200 flex-col justify-between sticky top-0 h-screen print:hidden">
         <div className="p-5 space-y-6 overflow-y-auto">
           {/* Brand Identity */}
           <div className="flex items-center gap-3 pb-4 border-b border-slate-100">

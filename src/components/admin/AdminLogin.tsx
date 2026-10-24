@@ -1,24 +1,19 @@
 import React, { useState } from 'react';
 import {
-  ArrowLeft,
   Building2,
   Eye,
   EyeOff,
   Lock,
   LogIn,
-  ShieldCheck,
   UserCheck,
-  Zap,
 } from 'lucide-react';
 
 interface AdminLoginProps {
   onLoginSuccess: (username: string) => void;
-  onBackToCitizen: () => void;
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({
   onLoginSuccess,
-  onBackToCitizen,
 }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -49,103 +44,69 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     }, 250);
   };
 
-  const handleQuickLogin = () => {
-    setUsername('admin_pupr');
-    setPassword('kebumen2025');
-    onLoginSuccess('admin_pupr');
-  };
-
   return (
-    <div className="w-full min-h-[calc(100vh-36px)] grid grid-cols-1 lg:grid-cols-12 bg-slate-50 text-slate-900">
+    <div className="w-full min-h-screen grid grid-cols-1 lg:grid-cols-12 bg-slate-50 text-slate-900">
       {/* Left Institutional Panel (Desktop / Large Screens) */}
-      <div className="hidden lg:flex lg:col-span-6 xl:col-span-7 bg-[#0B192C] text-white flex-col justify-between p-10 xl:p-14 border-r border-slate-800">
-        <div>
-          <button
-            type="button"
-            onClick={onBackToCitizen}
-            className="inline-flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-white transition-colors whitespace-nowrap"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Kembali ke Portal Warga</span>
-          </button>
-        </div>
+      <div className="hidden lg:flex lg:col-span-6 xl:col-span-7 relative overflow-hidden bg-gradient-to-br from-[#eaf2fb] via-[#f4f8fd] to-[#e3eef9] text-[#0B192C] flex-col justify-between p-10 xl:p-14 border-r border-slate-200/90">
+        {/* Soft luminous radial backdrop behind transparent blue logo */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 rounded-full bg-white/80 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-12 right-8 w-80 h-80 rounded-full bg-amber-200/25 blur-3xl"
+        />
 
-        <div className="max-w-xl space-y-8 my-auto py-8">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2.5 text-sm font-semibold text-sky-300">
-              <Building2 className="w-5 h-5" />
+        <div className="relative z-10 max-w-xl space-y-7 my-auto py-8">
+          {/* Transparent Logo Display */}
+          <div className="flex items-center gap-4">
+            <div className="w-24 h-24 xl:w-28 xl:h-28 rounded-3xl bg-white/90 backdrop-blur-sm border border-white shadow-[0_14px_34px_rgba(0,53,95,0.10)] p-3.5 flex items-center justify-center shrink-0">
+              <img
+                src="/assets/aistudio/Logo_SUARA_RUANG_tanpa_teks_transparan_1d640663.png"
+                alt="Logo Suara Ruang"
+                className="w-full h-full object-contain drop-shadow-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <span className="block text-2xl xl:text-3xl font-extrabold tracking-tight text-[#00355f]">
+                SUARA RUANG
+              </span>
+              <span className="block text-xs font-semibold uppercase tracking-widest text-slate-600">
+                Sistem Pemetaan Aksesibilitas Publik
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3.5 pt-1">
+            <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#005187]">
+              <Building2 className="w-4 h-4 shrink-0" />
               <span>Dinas Pekerjaan Umum dan Penataan Ruang · Kabupaten Kebumen</span>
             </div>
-            <h1 className="text-3xl xl:text-4xl font-bold tracking-tight text-white leading-tight [text-wrap:balance]">
+            <h1 className="text-3xl xl:text-4xl font-bold tracking-tight text-[#0B192C] leading-tight [text-wrap:balance]">
               Pusat Kendali Verifikasi & Disposisi Aksesibilitas Ruang Publik
             </h1>
-            <p className="text-base text-slate-300 leading-relaxed">
-              Kelola laporan hambatan fasilitas publik secara objektif menggunakan skala prioritas
-              0–100, pantau progres regu lapangan Tim Reaksi Cepat (TRC), dan publikasikan
-              dokumentasi perbaikan secara transparan kepada warga.
-            </p>
-          </div>
-
-          {/* Priority Assessment Reference */}
-          <div className="border-t border-white/15 pt-6 space-y-4">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span className="font-semibold text-slate-200">
-                Aspek Penilaian Urutan Prioritas
-              </span>
-              <span className="font-mono tabular-nums">Skala Penilaian 0 – 100</span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                { step: '01', label: 'Keselamatan Warga', weight: '35%' },
-                { step: '02', label: 'Aksesibilitas Difabel', weight: '30%' },
-                { step: '03', label: 'Fasilitas & Pengguna', weight: '25%' },
-                { step: '04', label: 'Kerusakan Fisik', weight: '10%' },
-              ].map(item => (
-                <div
-                  key={item.step}
-                  className="p-3.5 rounded-xl bg-white/[0.04] border border-white/10 space-y-1"
-                >
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono tabular-nums">
-                    <span>{item.step}</span>
-                    <span className="text-sky-300 font-semibold">{item.weight}</span>
-                  </div>
-                  <p className="text-xs font-medium text-slate-200 leading-snug">
-                    {item.label}
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-400 border-t border-white/10 pt-5">
-          <span>SUARA RUANG · Sistem Informasi Aksesibilitas Terpadu</span>
-          <span className="font-mono tabular-nums">Kabupaten Kebumen</span>
+        <div className="relative z-10 flex items-center justify-between text-xs text-slate-600 border-t border-slate-300/60 pt-5">
+          <span className="font-medium">SUARA RUANG · Sistem Informasi Aksesibilitas Terpadu</span>
+          <span className="font-mono tabular-nums font-semibold text-[#00355f]">
+            Kabupaten Kebumen
+          </span>
         </div>
       </div>
 
       {/* Right Login Form Surface (All Devices) */}
       <div className="col-span-1 lg:col-span-6 xl:col-span-5 flex flex-col justify-between p-5 sm:p-8 lg:p-12 bg-white">
         {/* Mobile/Tablet Top Navigation */}
-        <div className="flex items-center justify-between lg:hidden">
-          <button
-            type="button"
-            onClick={onBackToCitizen}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#00355f] hover:underline py-2 whitespace-nowrap"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Kembali ke Portal Warga</span>
-          </button>
+        <div className="flex items-center justify-end lg:hidden">
           <span className="text-xs font-mono text-slate-500">Dinas PUPR Kebumen</span>
         </div>
 
         <div className="w-full max-w-md mx-auto my-auto py-6 space-y-7">
           <div className="space-y-2">
-            <div className="w-12 h-12 rounded-xl bg-[#00355f] text-white flex items-center justify-center">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <p className="text-xs font-semibold text-[#005187] pt-2">
+            <p className="text-xs font-semibold text-[#005187]">
               Portal Pengawas Pemerintah Daerah
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 [text-wrap:balance]">
@@ -236,7 +197,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               <span className="text-xs text-slate-500 font-mono">Otentikasi Pengawas</span>
             </div>
 
-            <div className="pt-2 space-y-2.5">
+            <div className="pt-2">
               <button
                 type="submit"
                 disabled={isLoading}
@@ -250,15 +211,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     <span>Masuk ke Portal Admin</span>
                   </>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleQuickLogin}
-                className="w-full h-11 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
-              >
-                <Zap className="w-4 h-4 text-[#00355f]" />
-                <span>Masuk Cepat Pengawas PUPR</span>
               </button>
             </div>
           </form>
