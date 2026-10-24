@@ -7,7 +7,6 @@ import { BuatLaporanView } from './components/BuatLaporanView';
 import { Header } from './components/Header';
 import { LacakLaporanView } from './components/LacakLaporanView';
 import { PortalSwitcherBar } from './components/PortalSwitcherBar';
-import { SawExplainerModal } from './components/SawExplainerModal';
 import { LEGACY_DUMMY_IDS } from './data/initialData';
 import { ReportItem } from './types';
 import { rankReportsBySaw } from './utils/sawCalculator';
@@ -44,7 +43,6 @@ export default function App() {
   const [citizenTab, setCitizenTab] = useState<'beranda' | 'lapor' | 'lacak'>('beranda');
   const [selectedReportId, setSelectedReportId] = useState<string>('');
   const [prefilledLocation, setPrefilledLocation] = useState<string>('');
-  const [isSawModalOpen, setIsSawModalOpen] = useState(false);
   const [isHighContrast, setIsHighContrast] = useState(false);
 
   const [dbStatus, setDbStatus] = useState<DatabaseStatus>({
@@ -213,7 +211,6 @@ export default function App() {
               if (tab !== 'lapor') setPrefilledLocation('');
               setCitizenTab(tab);
             }}
-            onOpenSawModal={() => setIsSawModalOpen(true)}
             isHighContrast={isHighContrast}
             onToggleContrast={handleToggleContrast}
           />
@@ -230,7 +227,6 @@ export default function App() {
                   if (reportId) setSelectedReportId(reportId);
                   setCitizenTab('lacak');
                 }}
-                onOpenSawModal={() => setIsSawModalOpen(true)}
               />
             )}
 
@@ -250,7 +246,6 @@ export default function App() {
                   setPrefilledLocation(loc);
                   setCitizenTab('lapor');
                 }}
-                onOpenSawModal={() => setIsSawModalOpen(true)}
               />
             )}
           </main>
@@ -261,11 +256,6 @@ export default function App() {
               if (tab !== 'lapor') setPrefilledLocation('');
               setCitizenTab(tab);
             }}
-          />
-
-          <SawExplainerModal
-            isOpen={isSawModalOpen}
-            onClose={() => setIsSawModalOpen(false)}
           />
         </div>
       )}

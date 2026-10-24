@@ -3,7 +3,6 @@ import React from 'react';
 interface HeaderProps {
   currentTab: 'beranda' | 'lapor' | 'lacak';
   onTabChange: (tab: 'beranda' | 'lapor' | 'lacak') => void;
-  onOpenSawModal: () => void;
   isHighContrast: boolean;
   onToggleContrast: () => void;
 }
@@ -11,7 +10,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   currentTab,
   onTabChange,
-  onOpenSawModal,
   isHighContrast,
   onToggleContrast,
 }) => {
@@ -65,15 +63,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Accessibility & Mode Controls */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          {/* SAW Information Button */}
-          <button
-            aria-label="Panduan & Rumus SAW"
-            title="Informasi Metode SAW"
-            onClick={onOpenSawModal}
-            className="w-10 h-10 rounded-xl bg-[#eaedff] hover:bg-[#dae2fd] flex items-center justify-center text-[#00355f] font-bold text-xs transition-colors focus:ring-2 focus:ring-[#006496] focus:outline-none"
-          >
-            <span className="material-symbols-outlined text-[20px]">functions</span>
-          </button>
 
           {/* High Contrast Toggle */}
           <button

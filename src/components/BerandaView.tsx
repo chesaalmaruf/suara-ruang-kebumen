@@ -6,14 +6,12 @@ interface BerandaViewProps {
   reports: ReportItem[];
   onNavigateToLapor: () => void;
   onNavigateToLacak: (reportId?: string) => void;
-  onOpenSawModal: () => void;
 }
 
 export const BerandaView: React.FC<BerandaViewProps> = ({
   reports,
   onNavigateToLapor,
   onNavigateToLacak,
-  onOpenSawModal,
 }) => {
   const [selectedFilter, setSelectedFilter] = useState<
     'all' | 'critical' | 'in_progress' | 'completed'
@@ -88,13 +86,6 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               Peta Sebaran Infrastruktur
             </h2>
           </div>
-          <button
-            onClick={onOpenSawModal}
-            className="text-[11px] font-bold text-[#006496] bg-[#eaedff] hover:bg-[#dae2fd] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
-          >
-            <span>Matriks SAW</span>
-            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-          </button>
         </div>
 
         {/* Map Canvas Container with Live Area Tracking */}

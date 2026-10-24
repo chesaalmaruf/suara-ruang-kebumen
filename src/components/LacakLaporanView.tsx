@@ -5,7 +5,6 @@ interface LacakLaporanViewProps {
   reports: ReportItem[];
   initialSearchId?: string;
   onNavigateToLaporWithLocation?: (loc: string) => void;
-  onOpenSawModal: () => void;
 }
 
 export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
