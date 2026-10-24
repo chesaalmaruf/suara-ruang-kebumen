@@ -121,3 +121,26 @@ export function rankReportsBySaw(reports: ReportItem[]): ReportItem[] {
     },
   }));
 }
+
+/**
+ * Converts a 0..1 score into an easy-to-read 0..100 integer score for all UI views
+ */
+export function toScore100(value?: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0;
+  const scaled = value <= 1.0001 ? value * 100 : value;
+  return Math.round(Math.max(0, Math.min(100, scaled)));
+}
+
+/**
+ * Cleans any legacy 'SAW' mentions from previously saved database timeline strings
+ */
+export function cleanLegacySawText(text?: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\bskor prioritas SAW\b/gi, 'tingkat urgensi penanganan')
+    .replace(/\bprioritas SAW\b/gi, 'prioritas penanganan')
+    .replace(/\bSAW\b/gi, 'Prioritas')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+

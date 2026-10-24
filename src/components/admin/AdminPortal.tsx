@@ -28,6 +28,7 @@ import {
 import { FacilityCategory, ReportItem } from '../../types';
 import { DatabaseStatus } from '../../services/reportService';
 import { compressImageFile, formatCurrentWibTime } from '../../utils/imageHelper';
+import { cleanLegacySawText, toScore100 } from '../../utils/sawCalculator';
 import { LeafletMapView } from '../LeafletMapView';
 
 interface AdminPortalProps {
@@ -391,7 +392,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     const spkCode = report.spkNumber || `#SPK-PUPR-${report.id.replace(/[^0-9]/g, '')}`;
     const noteText =
       note?.trim() ||
-      `Diterjunkan ${team.label} ke lokasi ${report.placeName} sesuai prioritas SAW.`;
+      `Diterjunkan ${team.label} ke lokasi ${report.placeName} sesuai urutan prioritas penanganan.`;
 
     const updatedTimeline = report.timeline.map((step, idx) => {
       if (idx === 0) return { ...step, completed: true, active: false };
@@ -554,7 +555,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       'Kategori',
       'Jenis Hambatan',
       'Keparahan',
-      'Skor SAW',
+      'Skor Prioritas (0-100)',
       'Status',
       'Nomor SPK',
       'Waktu Lapor',
@@ -570,7 +571,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       r.facilityCategory,
       `"${r.obstacleType.replace(/"/g, '""')}"`,
       r.severity,
-      r.sawScores.totalSaw.toFixed(3),
+      toScore100(r.sawScores.totalSaw),
       r.statusLabel,
       r.spkNumber || '-',
       `"${r.createdAt}"`,
@@ -595,13 +596,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     month: 'long',
     year: 'numeric',
   });
-  const avgSaw =
+  const avgPriorityScore =
     filteredReports.length > 0
-      ? (
-          filteredReports.reduce((acc, r) => acc + (r.sawScores?.totalSaw || 0), 0) /
-          filteredReports.length
-        ).toFixed(3)
-      : '0.000';
+      ? Math.round(
+          filteredReports.reduce(
+            (acc, r) => acc + toScore100(r.sawScores?.totalSaw),
+            0
+          ) / filteredReports.length
+        )
+      : 0;
   const completionPct =
     filteredReports.length > 0
       ? Math.round((completedCount / filteredReports.length) * 100)
@@ -719,9 +722,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <StatusInline status={report.status} label={report.statusLabel} />
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500">Skor Prioritas SAW</span>
+              <span className="text-slate-500">Skor Prioritas</span>
               <span className="font-mono tabular-nums font-semibold text-slate-900">
-                {report.sawScores.totalSaw.toFixed(3)} · Peringkat #{report.sawScores.rank || 1}
+                {toScore100(report.sawScores.totalSaw)}/100 · Urutan #{report.sawScores.rank || 1}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2">
@@ -1326,7 +1329,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     {criticalCount}
                   </p>
                   <p className="text-xs text-slate-500 tabular-nums">
-                    Skor SAW &ge; 0.850
+                    Skor Prioritas &ge; 85
                   </p>
                 </div>
 
@@ -1357,24 +1360,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 tabular-nums">
-                    Rata-rata indeks SAW {avgSaw}
+                    Rata-rata skor prioritas {avgPriorityScore}/100
                   </p>
                 </div>
               </div>
 
               {/* Master-Detail 12-Column Grid */}
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-                {/* Left Column: SAW Queue + Geospatial Mini-Analytics */}
+                {/* Left Column: Priority Queue + Geospatial Mini-Analytics */}
                 <div className="xl:col-span-7 space-y-6">
-                  {/* SAW Decision Support Queue */}
+                  {/* Priority Queue */}
                   <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                          Antrean Validasi & Pemeringkatan SAW
+                          Antrean Validasi & Urutan Prioritas
                         </h2>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Urutan objektif berdasarkan bobot keselamatan, difabel, cakupan publik, dan fisik
+                          Diurutkan otomatis berdasarkan tingkat kedaruratan keselamatan, akses difabel, dan dampak warga (skala 0–100)
                         </p>
                       </div>
 
@@ -1409,7 +1412,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </p>
                         <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
                           Laporan baru yang dikirim warga melalui Portal Warga akan langsung masuk ke
-                          daftar ini beserta perhitungan skor SAW secara otomatis.
+                          daftar ini beserta skor prioritas (0–100) secara otomatis.
                         </p>
                       </div>
                     ) : (
@@ -1440,19 +1443,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                                 <div className="flex items-center gap-2 font-mono tabular-nums text-xs">
                                   <span className="font-semibold text-slate-700">
-                                    Peringkat #{rep.sawScores.rank || 1}
+                                    Urutan #{rep.sawScores.rank || 1}
                                   </span>
                                   <span className="text-slate-300" aria-hidden="true">
                                     ·
                                   </span>
                                   <span
                                     className={`font-bold ${
-                                      rep.sawScores.totalSaw >= 0.85
+                                      toScore100(rep.sawScores.totalSaw) >= 85
                                         ? 'text-red-700'
                                         : 'text-[#00355f]'
                                     }`}
                                   >
-                                    SAW {rep.sawScores.totalSaw.toFixed(3)}
+                                    Skor {toScore100(rep.sawScores.totalSaw)}/100
                                   </span>
                                 </div>
                               </div>
@@ -1489,27 +1492,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 </div>
                               </div>
 
-                              {/* 4-Column SAW Breakdown */}
+                              {/* 4-Column Priority Aspect Breakdown (0-100) */}
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-[11px]">
                                 {[
                                   {
-                                    label: 'C1 Keselamatan',
-                                    val: rep.sawScores.c1Safety,
+                                    label: 'Keselamatan',
+                                    score: toScore100(rep.sawScores.c1Safety),
                                     bar: 'bg-red-600',
                                   },
                                   {
-                                    label: 'C2 Difabel',
-                                    val: rep.sawScores.c2Access,
+                                    label: 'Akses Difabel',
+                                    score: toScore100(rep.sawScores.c2Access),
                                     bar: 'bg-sky-600',
                                   },
                                   {
-                                    label: 'C3 Pengguna',
-                                    val: rep.sawScores.c3Users,
+                                    label: 'Warga Terdampak',
+                                    score: toScore100(rep.sawScores.c3Users),
                                     bar: 'bg-[#00355f]',
                                   },
                                   {
-                                    label: 'C4 Fisik',
-                                    val: rep.sawScores.c4Physical,
+                                    label: 'Kerusakan Fisik',
+                                    score: toScore100(rep.sawScores.c4Physical),
                                     bar: 'bg-slate-600',
                                   },
                                 ].map(crit => (
@@ -1517,14 +1520,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                     <div className="flex justify-between text-slate-600">
                                       <span className="truncate">{crit.label}</span>
                                       <span className="font-mono tabular-nums font-semibold text-slate-900">
-                                        {crit.val.toFixed(2)}
+                                        {crit.score}
                                       </span>
                                     </div>
                                     <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                                       <div
                                         className={`${crit.bar} h-full`}
                                         style={{
-                                          width: `${Math.min(100, crit.val * 100)}%`,
+                                          width: `${crit.score}%`,
                                         }}
                                       />
                                     </div>
@@ -1839,9 +1842,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               </p>
                             </div>
                             <div className="text-right font-mono tabular-nums">
-                              <span className="text-[10px] text-slate-500 block">SAW Maks</span>
+                              <span className="text-[10px] text-slate-500 block">Skor Tertinggi</span>
                               <span className="text-xs font-bold text-red-700">
-                                {clust.maxSaw.toFixed(3)}
+                                {toScore100(clust.maxSaw)}/100
                               </span>
                             </div>
                           </div>
@@ -1949,7 +1952,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold text-slate-600">
                             <th className="py-3 px-4">Tiket & Lokasi</th>
                             <th className="py-3 px-4">Kecamatan</th>
-                            <th className="py-3 px-4 text-right">Skor SAW</th>
+                            <th className="py-3 px-4 text-right">Skor Prioritas</th>
                             <th className="py-3 px-4">Regu Pelaksana / SPK</th>
                             <th className="py-3 px-4 w-52">Progres Lapangan</th>
                             <th className="py-3 px-4">Status</th>
@@ -1994,15 +1997,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 <td className="py-3.5 px-4 text-right font-mono tabular-nums">
                                   <span
                                     className={`font-bold ${
-                                      task.sawScores.totalSaw >= 0.85
+                                      toScore100(task.sawScores.totalSaw) >= 85
                                         ? 'text-red-700'
                                         : 'text-slate-900'
                                     }`}
                                   >
-                                    {task.sawScores.totalSaw.toFixed(3)}
+                                    {toScore100(task.sawScores.totalSaw)}/100
                                   </span>
                                   <span className="block text-[11px] text-slate-400">
-                                    Rank #{task.sawScores.rank || 1}
+                                    Urutan #{task.sawScores.rank || 1}
                                   </span>
                                 </td>
 
@@ -2137,7 +2140,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <div className="space-y-2.5">
                             <div className="flex items-center justify-between gap-2 text-xs">
                               <span className="font-mono tabular-nums font-bold text-[#00355f]">
-                                {task.spkNumber || task.id} · SAW {task.sawScores.totalSaw.toFixed(3)}
+                                {task.spkNumber || task.id} · Skor {toScore100(task.sawScores.totalSaw)}/100
                               </span>
                               <StatusInline status={task.status} label={task.statusLabel} />
                             </div>
@@ -2311,9 +2314,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-1">
-                  <span className="text-xs text-slate-500">Indeks Rata-Rata SAW</span>
+                  <span className="text-xs text-slate-500">Rata-Rata Skor Prioritas</span>
                   <p className="text-2xl font-bold text-[#00355f] font-mono tabular-nums">
-                    {avgSaw}
+                    {avgPriorityScore}/100
                   </p>
                   <p className="text-xs text-slate-500 tabular-nums">
                     {criticalCount} laporan kategori kritis
@@ -2360,14 +2363,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <div key={log.id} className="p-4 sm:px-5 space-y-1">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                             <span className="font-mono tabular-nums font-semibold text-[#00355f]">
-                              {log.reportId} · Kec. {log.district} · SAW {log.saw.toFixed(3)}
+                              {log.reportId} · Kec. {log.district} · Skor {toScore100(log.saw)}/100
                             </span>
                             <span className="tabular-nums">{log.time}</span>
                           </div>
                           <h4 className="text-xs sm:text-sm font-bold text-slate-900">
                             {log.stageTitle} — {log.title}
                           </h4>
-                          <p className="text-xs text-slate-600 leading-relaxed">{log.desc}</p>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {cleanLegacySawText(log.desc)}
+                          </p>
                         </div>
                       ))}
                     </div>

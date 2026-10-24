@@ -200,7 +200,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           stage: 2,
           title: '2. Verifikasi Lapangan',
           time: 'Menunggu Pengawas',
-          desc: 'Pengawas DPUPR memvalidasi bukti visual, lokasi GPS, dan skor prioritas SAW.',
+          desc: 'Pengawas DPUPR memvalidasi bukti visual, lokasi GPS, dan tingkat urgensi penanganan.',
           completed: false,
         },
         {
@@ -241,7 +241,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           </p>
         </div>
         <p className="text-sm text-[#42474f] leading-relaxed">
-          Laporan telah tersimpan ke database dan langsung masuk ke antrean Admin Dinas PUPR untuk diverifikasi dan ditindaklanjuti berdasarkan prioritas SAW.
+          Laporan telah tersimpan ke database dan langsung masuk ke antrean Admin Dinas PUPR untuk diverifikasi dan ditindaklanjuti berdasarkan tingkat urgensi lapangan.
         </p>
       </div>
     );
@@ -441,7 +441,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </legend>
             <span className="text-[10px] font-bold text-[#00355f] flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px]">checklist</span>
-              Parameter SAW
+              Tingkat Dampak
             </span>
           </div>
 

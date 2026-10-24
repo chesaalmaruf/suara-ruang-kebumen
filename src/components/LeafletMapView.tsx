@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { ReportItem } from '../types';
+import { toScore100 } from '../utils/sawCalculator';
 
 interface LeafletMapViewProps {
   reports: ReportItem[];
@@ -173,7 +174,7 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       const popupHtml = `
         <div style="font-family: 'Plus Jakarta Sans', sans-serif; padding: 4px; min-width: 180px;">
           <div style="font-size: 10px; font-weight: 800; color: ${colorClass}; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-            ${report.id} • Skor SAW: ${report.sawScores.totalSaw.toFixed(3)}
+            ${report.id} • Skor Prioritas: ${toScore100(report.sawScores.totalSaw)}/100
           </div>
           <div style="font-size: 13px; font-weight: 700; color: #131b2e; margin-bottom: 4px; line-height: 1.3;">
             ${report.title}

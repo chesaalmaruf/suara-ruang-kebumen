@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ReportItem } from '../types';
+import { cleanLegacySawText, toScore100 } from '../utils/sawCalculator';
 
 interface LacakLaporanViewProps {
   reports: ReportItem[];
@@ -270,12 +271,12 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
           </span>
         </div>
 
-        {/* SAW Score Mini Badge & Breakdown Toggle */}
+        {/* Priority Score Summary & Breakdown Toggle */}
         <div className="pt-1 flex items-center justify-between text-[11px]">
           <div className="flex items-center gap-1.5">
-            <span className="text-[#42474f] font-medium">Skor SAW:</span>
+            <span className="text-[#42474f] font-medium">Skor Prioritas:</span>
             <span className="font-extrabold text-[#00355f] bg-[#d2e4ff] px-2 py-0.5 rounded-md font-mono">
-              {activeReport.sawScores.totalSaw.toFixed(3)} (Rank #
+              {toScore100(activeReport.sawScores.totalSaw)}/100 (Urutan #
               {activeReport.sawScores.rank || 1})
             </span>
           </div>
@@ -284,7 +285,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
             onClick={() => setShowSawDetails(!showSawDetails)}
             className="text-[#006496] font-bold flex items-center gap-0.5 hover:underline"
           >
-            <span>{showSawDetails ? 'Tutup Rincian' : 'Lihat Bobot SAW'}</span>
+            <span>{showSawDetails ? 'Tutup Rincian' : 'Rincian Penilaian'}</span>
             <span className="material-symbols-outlined text-[14px]">
               {showSawDetails ? 'expand_less' : 'expand_more'}
             </span>
@@ -294,27 +295,27 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
         {showSawDetails && (
           <div className="p-3 bg-[#f2f3ff] rounded-xl space-y-2 text-[11px] border border-[#dae2fd] animate-fade-in">
             <div className="flex justify-between text-[#131b2e]">
-              <span>C1: Bahaya Keselamatan (w=0.35)</span>
+              <span>Tingkat Bahaya Keselamatan</span>
               <span className="font-mono font-bold text-[#ba1a1a]">
-                {activeReport.sawScores.c1Safety.toFixed(2)}
+                {toScore100(activeReport.sawScores.c1Safety)}/100
               </span>
             </div>
             <div className="flex justify-between text-[#131b2e]">
-              <span>C2: Dampak Akses Difabel (w=0.30)</span>
+              <span>Dampak Aksesibilitas Difabel</span>
               <span className="font-mono font-bold text-[#006496]">
-                {activeReport.sawScores.c2Access.toFixed(2)}
+                {toScore100(activeReport.sawScores.c2Access)}/100
               </span>
             </div>
             <div className="flex justify-between text-[#131b2e]">
-              <span>C3: Pengguna Terdampak (w=0.20)</span>
+              <span>Cakupan Warga Terdampak</span>
               <span className="font-mono font-bold text-[#00355f]">
-                {activeReport.sawScores.c3Users.toFixed(2)}
+                {toScore100(activeReport.sawScores.c3Users)}/100
               </span>
             </div>
             <div className="flex justify-between text-[#131b2e]">
-              <span>C4: Tingkat Kerusakan Fisik (w=0.15)</span>
+              <span>Tingkat Kerusakan Fisik</span>
               <span className="font-mono font-bold text-[#727780]">
-                {activeReport.sawScores.c4Physical.toFixed(2)}
+                {toScore100(activeReport.sawScores.c4Physical)}/100
               </span>
             </div>
           </div>
@@ -370,7 +371,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-[#42474f] mt-1 leading-relaxed">
-                  {step.desc}
+                  {cleanLegacySawText(step.desc)}
                 </p>
               </div>
             </div>

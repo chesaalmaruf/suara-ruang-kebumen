@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ReportItem } from '../types';
+import { toScore100 } from '../utils/sawCalculator';
 import { LeafletMapView } from './LeafletMapView';
 
 interface BerandaViewProps {
@@ -101,7 +102,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
           <div className="bg-[#ffdad6]/40 p-2 rounded-xl flex flex-col items-center border border-[#ffdad6]">
             <span className="text-[10px] text-[#ba1a1a] font-bold flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-[#ba1a1a]"></span>
-              Kritis (SAW &ge; 0.85)
+              Darurat (Skor &ge; 85)
             </span>
             <span className="text-sm font-extrabold text-[#ba1a1a] mt-0.5">
               {criticalCount} Titik
@@ -213,7 +214,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               </span>
               Wilayah Paling Butuh Perbaikan
             </span>
-            <span className="text-[10px] font-semibold text-[#006496]">Prioritas SAW</span>
+            <span className="text-[10px] font-semibold text-[#006496]">Urutan Prioritas</span>
           </div>
 
           {districtStats.length === 0 ? (
@@ -315,7 +316,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-mono font-bold text-[#00355f] bg-[#eaedff] px-2 py-0.5 rounded">
-                    {rep.id} • Rank #{rep.sawScores.rank || 1}
+                    {rep.id} • Urutan #{rep.sawScores.rank || 1}
                   </span>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -339,7 +340,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
                     Kec. {rep.district} • {rep.placeName}
                   </span>
                   <span className="font-mono font-bold text-[#006496] shrink-0 ml-2">
-                    SAW {rep.sawScores.totalSaw.toFixed(3)}
+                    Skor {toScore100(rep.sawScores.totalSaw)}/100
                   </span>
                 </div>
               </button>
@@ -423,7 +424,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
 
               <div className="pt-2 flex items-center justify-between border-t border-[#f2f3ff] text-[11px] text-[#006496]">
                 <span className="font-semibold">
-                  Skor SAW: {completedReport.sawScores.totalSaw.toFixed(3)} (Tuntas)
+                  Skor Prioritas: {toScore100(completedReport.sawScores.totalSaw)}/100 (Tuntas)
                 </span>
                 <button
                   onClick={() => onNavigateToLacak(completedReport.id)}

@@ -80,34 +80,34 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               Pusat Kendali Verifikasi & Disposisi Aksesibilitas Ruang Publik
             </h1>
             <p className="text-base text-slate-300 leading-relaxed">
-              Kelola laporan hambatan fasilitas publik secara terukur menggunakan metode Simple
-              Additive Weighting (SAW), pantau progres regu lapangan Tim Reaksi Cepat (TRC), dan
-              publikasikan dokumentasi perbaikan secara transparan kepada warga.
+              Kelola laporan hambatan fasilitas publik secara objektif menggunakan skala prioritas
+              0–100, pantau progres regu lapangan Tim Reaksi Cepat (TRC), dan publikasikan
+              dokumentasi perbaikan secara transparan kepada warga.
             </p>
           </div>
 
-          {/* SAW Weight Reference Matrix */}
+          {/* Priority Assessment Reference */}
           <div className="border-t border-white/15 pt-6 space-y-4">
             <div className="flex items-center justify-between text-xs text-slate-400">
               <span className="font-semibold text-slate-200">
-                Parameter Bobot Keputusan SAW
+                Aspek Penilaian Urutan Prioritas
               </span>
-              <span className="font-mono tabular-nums">Total Bobot = 1.00 (100%)</span>
+              <span className="font-mono tabular-nums">Skala Penilaian 0 – 100</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { code: 'C1', label: 'Keselamatan Publik', weight: '35%' },
-                { code: 'C2', label: 'Aksesibilitas Difabel', weight: '30%' },
-                { code: 'C3', label: 'Cakupan Pengguna', weight: '20%' },
-                { code: 'C4', label: 'Keparahan Fisik', weight: '15%' },
+                { step: '01', label: 'Keselamatan Warga', weight: '35%' },
+                { step: '02', label: 'Aksesibilitas Difabel', weight: '30%' },
+                { step: '03', label: 'Cakupan Pengguna', weight: '20%' },
+                { step: '04', label: 'Kerusakan Fisik', weight: '15%' },
               ].map(item => (
                 <div
-                  key={item.code}
+                  key={item.step}
                   className="p-3.5 rounded-xl bg-white/[0.04] border border-white/10 space-y-1"
                 >
                   <div className="flex items-center justify-between text-xs text-slate-400 font-mono tabular-nums">
-                    <span>{item.code}</span>
+                    <span>{item.step}</span>
                     <span className="text-sky-300 font-semibold">{item.weight}</span>
                   </div>
                   <p className="text-xs font-medium text-slate-200 leading-snug">
