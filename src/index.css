@@ -58,13 +58,32 @@ html.contrast-more .bg-surface {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Hide scrollbar for slick mobile look */
-::-webkit-scrollbar {
-  display: none;
+/* Responsive scrollbars: hidden on mobile/tablet, subtle thin scrollbar on desktop */
+@media (max-width: 1023px) {
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
-* {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+
+@media (min-width: 1024px) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
 }
 
 /* Leaflet Tailwind integration fixes */

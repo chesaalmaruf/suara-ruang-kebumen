@@ -1,4 +1,30 @@
 import React, { useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Building2,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  Download,
+  ExternalLink,
+  FileCheck2,
+  FolderKanban,
+  ImagePlus,
+  LayoutDashboard,
+  LogOut,
+  Map as MapIcon,
+  MapPin,
+  Menu,
+  Printer,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Trash2,
+  Wrench,
+  X,
+} from 'lucide-react';
 import { FacilityCategory, ReportItem } from '../../types';
 import { DatabaseStatus } from '../../services/reportService';
 import { compressImageFile, formatCurrentWibTime } from '../../utils/imageHelper';
@@ -15,24 +41,26 @@ interface AdminPortalProps {
   dbStatus?: DatabaseStatus;
 }
 
+type AdminTab = 'dashboard' | 'peta' | 'tugas' | 'audit';
+
 const TRC_TEAMS = [
   {
     id: 'regu_a',
-    label: 'Tim Reaksi Cepat PUPR Regu A (Zona Kebumen Kota)',
+    label: 'TRC PUPR Regu A — Zona Kebumen Kota',
     leadOfficer: 'Pengawas Regu A DPUPR',
     vehicle: 'Unit Operasional TRC-01',
     phone: '0287381110',
   },
   {
     id: 'regu_b',
-    label: 'Tim Reaksi Cepat PUPR Regu B (Zona Barat / Gombong)',
+    label: 'TRC PUPR Regu B — Zona Barat / Gombong',
     leadOfficer: 'Pengawas Regu B DPUPR',
     vehicle: 'Unit Operasional TRC-02',
     phone: '0287381110',
   },
   {
     id: 'regu_c',
-    label: 'Tim Pemeliharaan Rutin Regu C (Zona Timur / Prembun)',
+    label: 'Tim Pemeliharaan Regu C — Zona Timur / Prembun',
     leadOfficer: 'Pengawas Regu C DPUPR',
     vehicle: 'Unit Pemeliharaan TRC-03',
     phone: '0287381110',
@@ -64,6 +92,39 @@ interface SpatialCluster {
   maxSaw: number;
 }
 
+function StatusInline({ status, label }: { status: ReportItem['status']; label: string }) {
+  if (status === 'completed') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 whitespace-nowrap">
+        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+        <span>{label || 'Tuntas Selesai'}</span>
+      </span>
+    );
+  }
+  if (status === 'in_progress') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 whitespace-nowrap">
+        <Wrench className="w-3.5 h-3.5 shrink-0" />
+        <span>{label || 'Sedang Dikerjakan'}</span>
+      </span>
+    );
+  }
+  if (status === 'verified') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#00355f] whitespace-nowrap">
+        <FileCheck2 className="w-3.5 h-3.5 shrink-0" />
+        <span>{label || 'Terverifikasi'}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 whitespace-nowrap">
+      <Clock className="w-3.5 h-3.5 shrink-0" />
+      <span>{label || 'Menunggu Verifikasi'}</span>
+    </span>
+  );
+}
+
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   reports,
   onProcessReport,
@@ -74,13 +135,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onSwitchToCitizen,
   dbStatus,
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'peta' | 'tugas' | 'audit'>(
-    'dashboard'
-  );
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState(false);
+
   const [selectedDistrict, setSelectedDistrict] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [mapCategoryFilter, setMapCategoryFilter] = useState<'all' | FacilityCategory>('all');
   const [sawQueueTab, setSawQueueTab] = useState<'antrean' | 'prioritas' | 'dikerjakan'>(
-    'antrean'
+    'prioritas'
   );
   const [taskFilter, setTaskFilter] = useState<
     'all' | 'submitted' | 'in_progress' | 'completed'
@@ -89,12 +152,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [autoMerge, setAutoMerge] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Selected report for disposition & completion form
+  // Selected report for inspector, disposition & completion form
   const [selectedTicketId, setSelectedTicketId] = useState<string>('');
   const [selectedReguId, setSelectedReguId] = useState<string>(TRC_TEAMS[0].id);
   const [fieldNote, setFieldNote] = useState<string>('');
   const [uploadedAfterPhoto, setUploadedAfterPhoto] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
   const afterPhotoInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,11 +176,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return Array.from(set).sort();
   }, [reports]);
 
-  // District-filtered reports
+  // District + Search filtered reports
   const filteredReports = useMemo(() => {
-    if (selectedDistrict === 'ALL') return reports;
-    return reports.filter(r => r.district === selectedDistrict);
-  }, [reports, selectedDistrict]);
+    const q = searchQuery.trim().toLowerCase();
+    return reports.filter(r => {
+      const matchDistrict = selectedDistrict === 'ALL' || r.district === selectedDistrict;
+      if (!matchDistrict) return false;
+      if (!q) return true;
+      return (
+        r.id.toLowerCase().includes(q) ||
+        r.title.toLowerCase().includes(q) ||
+        r.placeName.toLowerCase().includes(q) ||
+        r.address.toLowerCase().includes(q) ||
+        r.district.toLowerCase().includes(q) ||
+        (r.spkNumber && r.spkNumber.toLowerCase().includes(q))
+      );
+    });
+  }, [reports, selectedDistrict, searchQuery]);
 
   // Map category-filtered reports
   const mapReports = useMemo(() => {
@@ -162,7 +238,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         pct: Math.round((v.done / v.total) * 100),
       }))
       .sort((a, b) => b.total - a.total)
-      .slice(0, 3);
+      .slice(0, 6);
   }, [reports]);
 
   // Real spatial clusters based on Haversine distance
@@ -208,7 +284,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return filteredReports.filter(r => r.status !== 'completed');
   }, [filteredReports, sawQueueTab]);
 
-  // Active target report for Disposition & Publication form
+  // Active target report for Inspector, Disposition & Publication form
   const activeDispositionReport = useMemo(() => {
     const found = filteredReports.find(r => r.id === selectedTicketId);
     if (found) return found;
@@ -243,6 +319,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       id: string;
       reportId: string;
       title: string;
+      district: string;
       stageTitle: string;
       time: string;
       desc: string;
@@ -258,6 +335,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             id: `${rep.id}-stage-${step.stage}`,
             reportId: rep.id,
             title: rep.title,
+            district: rep.district,
             stageTitle: step.title,
             time: step.time,
             desc: step.desc,
@@ -269,6 +347,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     return entries.reverse();
   }, [filteredReports]);
+
+  // Open ticket in inspector (desktop sticky panel + mobile/tablet drawer)
+  const openTicketInspector = (reportId: string, openModalOnMobile = false) => {
+    setSelectedTicketId(reportId);
+    setUploadedAfterPhoto(null);
+    if (openModalOnMobile) {
+      setIsMobileInspectorOpen(true);
+    }
+  };
 
   // Handlers for processing reports
   const handleVerifyReport = (report: ReportItem) => {
@@ -289,19 +376,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     onProcessReport(report.id, {
       status: 'verified',
-      statusLabel: 'Terverifikasi Pengawas DPUPR',
+      statusLabel: 'Terverifikasi DPUPR',
       verifiedAt: now,
       verifiedBy: 'Pengawas Dinas PUPR Kebumen',
       timeline: updatedTimeline,
     });
     setSelectedTicketId(report.id);
-    showToast(`Tiket ${report.id} berhasil diverifikasi!`);
+    showToast(`Tiket ${report.id} berhasil diverifikasi.`);
   };
 
   const handleDispatchSpk = (report: ReportItem, customTeamId?: string, note?: string) => {
     const now = formatCurrentWibTime();
     const team = TRC_TEAMS.find(t => t.id === (customTeamId || selectedReguId)) || TRC_TEAMS[0];
-    const spkCode = `#SPK-PUPR-${report.id.replace(/[^0-9]/g, '')}`;
+    const spkCode = report.spkNumber || `#SPK-PUPR-${report.id.replace(/[^0-9]/g, '')}`;
     const noteText =
       note?.trim() ||
       `Diterjunkan ${team.label} ke lokasi ${report.placeName} sesuai prioritas SAW.`;
@@ -331,7 +418,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     onProcessReport(report.id, {
       status: 'in_progress',
-      statusLabel: 'Sedang Dikerjakan oleh Dinas PUPR',
+      statusLabel: 'Sedang Dikerjakan TRC',
       spkNumber: spkCode,
       verifiedAt: report.verifiedAt || now,
       assignedTeam: {
@@ -347,7 +434,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       timeline: updatedTimeline,
     });
     setSelectedTicketId(report.id);
-    showToast(`SPK ${spkCode} diterbitkan & ${team.label.split('(')[0].trim()} ditugaskan!`);
+    showToast(`SPK ${spkCode} diterbitkan & regu lapangan ditugaskan.`);
   };
 
   const handleUpdateProgress = (report: ReportItem, percent: number) => {
@@ -405,7 +492,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     onProcessReport(report.id, {
       status: 'completed',
-      statusLabel: 'Tuntas 100% (Terverifikasi DPUPR)',
+      statusLabel: 'Tuntas 100% (Terverifikasi)',
       completedAt: now,
       verifiedBy: 'Dinas PUPR Kabupaten Kebumen',
       photoAfter: finalAfterPhoto,
@@ -431,7 +518,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     setUploadedAfterPhoto(null);
     setFieldNote('');
-    showToast(`Tiket ${report.id} selesai 100% & dipublikasikan ke Portal Warga!`);
+    setIsMobileInspectorOpen(false);
+    showToast(`Tiket ${report.id} tuntas 100% & dipublikasikan ke Portal Warga.`);
   };
 
   const handleAfterPhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -468,6 +556,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       'Keparahan',
       'Skor SAW',
       'Status',
+      'Nomor SPK',
       'Waktu Lapor',
     ];
     const rows = filteredReports.map(r => [
@@ -483,6 +572,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       r.severity,
       r.sawScores.totalSaw.toFixed(3),
       r.statusLabel,
+      r.spkNumber || '-',
       `"${r.createdAt}"`,
     ]);
     const csvContent =
@@ -517,9 +607,334 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       ? Math.round((completedCount / filteredReports.length) * 100)
       : 0;
 
+  const navItems: Array<{
+    id: AdminTab;
+    label: string;
+    shortLabel: string;
+    icon: React.FC<{ className?: string }>;
+    count?: number;
+  }> = [
+    {
+      id: 'dashboard',
+      label: 'Ringkasan & Validasi',
+      shortLabel: 'Ringkasan',
+      icon: LayoutDashboard,
+      count: needVerification > 0 ? needVerification : undefined,
+    },
+    {
+      id: 'peta',
+      label: 'Peta & Klaster Spasial',
+      shortLabel: 'Peta',
+      icon: MapIcon,
+      count: spatialClusters.length > 0 ? spatialClusters.length : undefined,
+    },
+    {
+      id: 'tugas',
+      label: 'Tugas & Disposisi SPK',
+      shortLabel: 'Tugas SPK',
+      icon: ClipboardCheck,
+      count: inProgressCount > 0 ? inProgressCount : undefined,
+    },
+    {
+      id: 'audit',
+      label: 'Audit & Rekapitulasi',
+      shortLabel: 'Audit',
+      icon: ShieldCheck,
+      count: completedCount > 0 ? completedCount : undefined,
+    },
+  ];
+
+  const currentTabTitle =
+    navItems.find(item => item.id === activeTab)?.label || 'Ringkasan & Validasi';
+
+  // Reusable Inspector & Disposition Panel Content (rendered sticky on desktop + slide-over on mobile/tablet)
+  const renderInspectorPanel = (report: ReportItem | null) => {
+    if (!report) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 text-center space-y-2">
+          <FolderKanban className="w-8 h-8 text-slate-400 mx-auto" />
+          <h3 className="text-sm font-semibold text-slate-900">
+            Belum Ada Tiket yang Dipilih
+          </h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Ketika warga mengirim laporan baru, pilih salah satu tiket pada antrean untuk melakukan
+            verifikasi, menerbitkan SPK, mengunggah foto perbaikan, atau menyelesaikan laporan.
+          </p>
+        </div>
+      );
+    }
+
+    const currentProgress =
+      report.status === 'completed'
+        ? 100
+        : report.assignedTeam?.progressPercent ||
+          (report.status === 'in_progress' ? 50 : report.status === 'verified' ? 25 : 0);
+
+    const beforeBroken = brokenImages[`before-${report.id}`];
+    const afterSrc = uploadedAfterPhoto || report.photoAfter;
+    const afterBroken = brokenImages[`after-${report.id}`];
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        {/* Panel Header */}
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500">Panel Disposisi & Penyelesaian</p>
+            <h3 className="text-sm font-bold text-slate-900 truncate">
+              {report.placeName || report.title}
+            </h3>
+          </div>
+          <span className="font-mono tabular-nums text-xs font-semibold text-[#00355f] shrink-0">
+            {report.id}
+          </span>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* Quick Ticket Selector */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="inspector-ticket-select"
+              className="block text-xs font-semibold text-slate-700"
+            >
+              Pilih Tiket Aktif
+            </label>
+            <select
+              id="inspector-ticket-select"
+              value={report.id}
+              onChange={e => openTicketInspector(e.target.value)}
+              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-[#00355f]"
+            >
+              {filteredReports.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.id} · {r.placeName} ({r.statusLabel})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Ticket Summary Metadata */}
+          <div className="py-3 border-y border-slate-100 space-y-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-500">Status Saat Ini</span>
+              <StatusInline status={report.status} label={report.statusLabel} />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-500">Skor Prioritas SAW</span>
+              <span className="font-mono tabular-nums font-semibold text-slate-900">
+                {report.sawScores.totalSaw.toFixed(3)} · Peringkat #{report.sawScores.rank || 1}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-500">Lokasi & Kecamatan</span>
+              <span className="font-medium text-slate-800 text-right truncate max-w-[220px]">
+                Kec. {report.district} · {report.address}
+              </span>
+            </div>
+            {report.spkNumber && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Nomor SPK</span>
+                <span className="font-mono tabular-nums font-semibold text-[#00355f]">
+                  {report.spkNumber}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Regu Pelaksana Selector */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="inspector-team-select"
+              className="block text-xs font-semibold text-slate-700"
+            >
+              Penugasan Regu Lapangan (TRC PUPR)
+            </label>
+            <select
+              id="inspector-team-select"
+              value={selectedReguId}
+              onChange={e => setSelectedReguId(e.target.value)}
+              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-[#00355f]"
+            >
+              {TRC_TEAMS.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Field Progress Controls */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-700">Progres Pengerjaan Lapangan</span>
+              <span className="font-mono tabular-nums font-bold text-[#00355f]">
+                {currentProgress}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-200 ${
+                  report.status === 'completed' ? 'bg-emerald-600' : 'bg-[#00355f]'
+                }`}
+                style={{ width: `${currentProgress}%` }}
+              />
+            </div>
+            {report.status !== 'completed' && (
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {[25, 50, 75].map(stepPct => (
+                  <button
+                    key={stepPct}
+                    type="button"
+                    onClick={() => handleUpdateProgress(report, stepPct)}
+                    className={`h-8 rounded-lg text-xs font-mono tabular-nums font-semibold border transition-colors whitespace-nowrap ${
+                      currentProgress === stepPct
+                        ? 'bg-[#00355f] text-white border-[#00355f]'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Set {stepPct}%
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Officer Action Note */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="inspector-field-note"
+              className="block text-xs font-semibold text-slate-700"
+            >
+              Catatan Tindakan / Hasil Perbaikan
+            </label>
+            <textarea
+              id="inspector-field-note"
+              rows={2}
+              value={fieldNote}
+              onChange={e => setFieldNote(e.target.value)}
+              placeholder="Contoh: Pemasangan kembali ubin guiding block & perataan akses kursi roda..."
+              className="w-full p-3 rounded-lg bg-slate-50 border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-[#00355f] resize-none"
+            />
+          </div>
+
+          {/* Before & After Photo Documentation */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-700">
+                Dokumentasi Sebelum & Sesudah
+              </span>
+              {uploadedAfterPhoto && (
+                <button
+                  type="button"
+                  onClick={() => setUploadedAfterPhoto(null)}
+                  className="text-xs font-semibold text-red-700 hover:underline whitespace-nowrap"
+                >
+                  Hapus Foto Baru
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Before Photo */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-medium text-slate-500 block">
+                  Kondisi Awal (Warga)
+                </span>
+                <div className="relative h-32 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center">
+                  {report.photoBefore && !beforeBroken ? (
+                    <img
+                      src={report.photoBefore}
+                      alt={`Kondisi awal ${report.title}`}
+                      referrerPolicy="no-referrer"
+                      onError={() =>
+                        setBrokenImages(prev => ({ ...prev, [`before-${report.id}`]: true }))
+                      }
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="p-3 text-center text-[11px] text-slate-500">
+                      Tanpa lampiran foto awal
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* After Photo Upload */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-medium text-slate-500 block">
+                  Pasca-Perbaikan (DPUPR)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => afterPhotoInputRef.current?.click()}
+                  className="relative w-full h-32 rounded-lg border border-dashed border-slate-300 hover:border-[#00355f] bg-slate-50 hover:bg-slate-100/70 transition-colors flex flex-col items-center justify-center p-2 text-center overflow-hidden"
+                >
+                  {afterSrc && !afterBroken ? (
+                    <img
+                      src={afterSrc}
+                      alt={`Hasil perbaikan ${report.title}`}
+                      referrerPolicy="no-referrer"
+                      onError={() =>
+                        setBrokenImages(prev => ({ ...prev, [`after-${report.id}`]: true }))
+                      }
+                      className="w-full h-full object-cover rounded"
+                    />
+                  ) : (
+                    <>
+                      <ImagePlus className="w-5 h-5 text-[#00355f] mb-1" />
+                      <span className="text-xs font-semibold text-slate-800">
+                        {isUploadingPhoto ? 'Memproses...' : 'Unggah Foto'}
+                      </span>
+                      <span className="text-[11px] text-slate-500 mt-0.5">
+                        Klik untuk pilih gambar
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Primary Action Workflow Buttons */}
+          <div className="space-y-2.5 pt-2">
+            {report.status === 'submitted' && (
+              <button
+                type="button"
+                onClick={() => handleVerifyReport(report)}
+                className="w-full h-10 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+              >
+                <FileCheck2 className="w-4 h-4 text-[#00355f]" />
+                <span>Validasi Laporan Warga</span>
+              </button>
+            )}
+
+            {report.status !== 'completed' && (
+              <button
+                type="button"
+                onClick={() => handleDispatchSpk(report, selectedReguId, fieldNote)}
+                className="w-full h-10 px-4 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+              >
+                <Wrench className="w-4 h-4" />
+                <span>Simpan Disposisi & Terbitkan SPK</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => handleCompleteReport(report)}
+              className="w-full h-11 px-4 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Tandai Selesai & Publikasikan ke Warga</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[#faf8ff] text-[#131b2e] flex flex-col max-w-md mx-auto relative select-none pb-20 border-x border-[#eaedff]">
-      {/* Hidden input for real after-photo upload */}
+    <div className="min-h-[calc(100vh-36px)] w-full bg-slate-50 text-slate-900 flex flex-col lg:flex-row">
+      {/* Hidden input for real compressed after-photo upload */}
       <input
         ref={afterPhotoInputRef}
         type="file"
@@ -528,1346 +943,1552 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         className="hidden"
       />
 
-      {/* Toast Notification */}
+      {/* Toast Feedback Banner */}
       {toastMessage && (
-        <div className="fixed top-16 inset-x-4 z-50 max-w-sm mx-auto bg-[#00355f] text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-bold animate-fade-in border border-[#7fc5fd]/30">
-          <span className="material-symbols-outlined text-[18px] text-[#a3f69c]">verified</span>
+        <div
+          role="status"
+          className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-50 max-w-md bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg border border-slate-700 flex items-center gap-2.5 text-xs font-medium"
+        >
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Admin Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#eaedff] px-4 py-3 shadow-xs">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-[#00355f] text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-              <span className="material-symbols-outlined text-[18px]">account_balance</span>
+      {/* =========================================================================
+          DESKTOP SIDEBAR NAVIGATION (lg and up)
+          ========================================================================= */}
+      <aside className="hidden lg:flex lg:w-64 xl:w-72 shrink-0 bg-white border-r border-slate-200 flex-col justify-between sticky top-0 h-[calc(100vh-36px)] print:hidden">
+        <div className="p-5 space-y-6 overflow-y-auto">
+          {/* Brand Identity */}
+          <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+            <div className="w-9 h-9 rounded-lg bg-[#00355f] text-white flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5" />
             </div>
-            <div className="flex flex-col min-w-0">
-              <h1 className="text-sm font-extrabold text-[#131b2e] truncate">
-                Admin Portal Dinas PUPR
-              </h1>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[#006496] font-semibold">
-                  Kabupaten Kebumen
-                </span>
-                {dbStatus && (
-                  <span
-                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8px] font-bold ${
-                      dbStatus.connected
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    ● {dbStatus.connected ? 'MongoDB' : 'Local'}
-                  </span>
-                )}
-              </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold tracking-tight text-slate-900 truncate">
+                SUARA RUANG
+              </p>
+              <p className="text-xs text-slate-500 truncate">Dinas PUPR Kebumen</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Refresh Live Data from MongoDB */}
+          {/* Primary Navigation */}
+          <nav className="space-y-1" aria-label="Menu Utama Admin">
+            {navItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full h-10 px-3 rounded-lg flex items-center justify-between text-xs font-semibold transition-colors whitespace-nowrap ${
+                    isActive
+                      ? 'bg-[#00355f] text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2.5 truncate">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  {item.count !== undefined && (
+                    <span
+                      className={`font-mono tabular-nums text-[11px] ${
+                        isActive ? 'text-sky-200' : 'text-slate-500'
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Wilayah / Kecamatan Filter in Sidebar */}
+          <div className="pt-4 border-t border-slate-100 space-y-2">
+            <label
+              htmlFor="sidebar-district-filter"
+              className="block text-xs font-semibold text-slate-700"
+            >
+              Filter Wilayah Kecamatan
+            </label>
+            <select
+              id="sidebar-district-filter"
+              value={selectedDistrict}
+              onChange={e => setSelectedDistrict(e.target.value)}
+              className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-[#00355f]"
+            >
+              <option value="ALL">Semua Kecamatan ({reports.length})</option>
+              {availableDistricts.map(d => (
+                <option key={d} value={d}>
+                  Kecamatan {d}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Sidebar Account & Portal Footer */}
+        <div className="p-4 border-t border-slate-200 space-y-2 bg-slate-50/60">
+          <div className="px-2 py-1 text-xs text-slate-600 flex items-center justify-between">
+            <span className="font-medium text-slate-800 truncate">Pengawas DPUPR</span>
+            <span className="font-mono text-[11px] text-slate-500">
+              {dbStatus?.connected ? 'MongoDB' : 'Lokal'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onSwitchToCitizen}
+            className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center justify-between transition-colors whitespace-nowrap"
+          >
+            <span>Lihat Portal Warga</span>
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="w-full h-9 px-3 rounded-lg text-red-700 hover:bg-red-50 text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Keluar Sesi Pengawas</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* =========================================================================
+          MOBILE & TABLET SLIDE-OVER NAVIGATION DRAWER (< lg)
+          ========================================================================= */}
+      {isMobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"
+            onClick={() => setIsMobileDrawerOpen(false)}
+          />
+          <div className="relative w-72 max-w-[85vw] bg-white h-full flex flex-col justify-between p-5 z-10 shadow-xl">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-[#00355f] text-white flex items-center justify-center">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">SUARA RUANG</p>
+                    <p className="text-[11px] text-slate-500">Admin Dinas PUPR</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileDrawerOpen(false)}
+                  aria-label="Tutup menu"
+                  className="p-2 rounded-lg text-slate-500 hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <nav className="space-y-1">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setIsMobileDrawerOpen(false);
+                      }}
+                      className={`w-full h-11 px-3.5 rounded-lg flex items-center justify-between text-xs font-semibold transition-colors whitespace-nowrap ${
+                        isActive
+                          ? 'bg-[#00355f] text-white'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-3">
+                        <Icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </span>
+                      {item.count !== undefined && (
+                        <span className="font-mono tabular-nums text-xs">{item.count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <label
+                  htmlFor="drawer-district-filter"
+                  className="block text-xs font-semibold text-slate-700"
+                >
+                  Filter Kecamatan
+                </label>
+                <select
+                  id="drawer-district-filter"
+                  value={selectedDistrict}
+                  onChange={e => setSelectedDistrict(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800"
+                >
+                  <option value="ALL">Semua Kecamatan ({reports.length})</option>
+                  {availableDistricts.map(d => (
+                    <option key={d} value={d}>
+                      Kecamatan {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-200 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileDrawerOpen(false);
+                  onSwitchToCitizen();
+                }}
+                className="w-full h-10 px-3.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-between"
+              >
+                <span>Buka Portal Warga</span>
+                <ExternalLink className="w-4 h-4 text-slate-400" />
+              </button>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="w-full h-10 px-3.5 rounded-lg bg-red-50 text-red-700 text-xs font-semibold flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Keluar Sesi Pengawas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MOBILE / TABLET SLIDE-UP TICKET INSPECTOR MODAL (< xl)
+          ========================================================================= */}
+      {isMobileInspectorOpen && activeDispositionReport && (
+        <div className="fixed inset-0 z-50 xl:hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"
+            onClick={() => setIsMobileInspectorOpen(false)}
+          />
+          <div className="relative z-10 w-full sm:max-w-lg max-h-[90vh] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-y-auto">
+            <div className="sticky top-0 z-10 bg-white px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-900">
+                Kelola & Disposisi Tiket {activeDispositionReport.id}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsMobileInspectorOpen(false)}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-3 sm:p-4">{renderInspectorPanel(activeDispositionReport)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MAIN WORKSPACE COLUMN (HEADER + RESPONSIVE VIEWPORT)
+          ========================================================================= */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Sticky Top Bar (Strict SaaS Top Bar Contract: Breadcrumb Left — Primary Actions Right) */}
+        <header className="sticky top-0 z-30 h-13 lg:h-16 bg-white/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 print:hidden">
+          <div className="flex items-center gap-3 min-w-0">
             <button
+              type="button"
+              onClick={() => setIsMobileDrawerOpen(true)}
+              aria-label="Buka navigasi admin"
+              className="lg:hidden p-2 -ml-1.5 rounded-lg text-slate-700 hover:bg-slate-100 shrink-0"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0">
+              <span className="hidden sm:inline text-slate-500 font-medium whitespace-nowrap">
+                Dinas PUPR Kebumen
+              </span>
+              <span className="hidden sm:inline text-slate-300" aria-hidden="true">
+                /
+              </span>
+              <h1 className="font-bold text-slate-900 truncate">{currentTabTitle}</h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
               onClick={() => {
                 onRefreshReports();
-                showToast('Menyegarkan data laporan terbaru dari database...');
+                showToast('Menyinkronkan data terbaru dari database...');
               }}
-              title="Muat Ulang Data Database"
-              className="w-8 h-8 rounded-full bg-[#f2f3ff] text-[#00355f] flex items-center justify-center hover:bg-[#eaedff] transition-colors"
+              className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
             >
-              <span
-                className={`material-symbols-outlined text-[18px] ${
-                  isRefreshing ? 'animate-spin' : ''
-                }`}
-              >
-                sync
-              </span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Sinkronkan</span>
             </button>
-
-            {/* Notification Bell */}
-            <button
-              onClick={() =>
-                showToast(
-                  needVerification > 0
-                    ? `Ada ${needVerification} laporan warga baru menunggu verifikasi.`
-                    : 'Semua laporan masuk sudah diverifikasi.'
-                )
-              }
-              aria-label="Notifikasi"
-              className="w-8 h-8 rounded-full bg-[#f2f3ff] text-[#131b2e] flex items-center justify-center hover:bg-[#eaedff] relative transition-colors"
-            >
-              <span className="material-symbols-outlined text-[18px]">notifications</span>
-              {needVerification > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-[#ba1a1a] text-white text-[9px] font-bold flex items-center justify-center">
-                  {needVerification}
-                </span>
-              )}
-            </button>
-
-            {/* Switch to Citizen App */}
-            <button
-              onClick={onSwitchToCitizen}
-              title="Lihat Portal Warga"
-              className="w-8 h-8 rounded-full bg-[#eaedff] text-[#00355f] flex items-center justify-center hover:bg-[#dae2fd] transition-colors"
-            >
-              <span className="material-symbols-outlined text-[18px]">open_in_new</span>
-            </button>
-
-            {/* Logout */}
-            <button
-              onClick={onLogout}
-              title="Keluar dari Akun Pengawas"
-              className="w-8 h-8 rounded-full bg-[#ffdad6] text-[#ba1a1a] flex items-center justify-center hover:bg-[#ffb4ab] transition-colors"
-            >
-              <span className="material-symbols-outlined text-[17px]">logout</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Real District Filter Select */}
-        <div className="mt-2.5 flex items-center gap-2 bg-[#f2f3ff] rounded-xl px-3 py-1.5 text-xs text-[#00355f] font-bold border border-[#dae2fd]">
-          <span className="material-symbols-outlined text-[16px]">domain</span>
-          <select
-            value={selectedDistrict}
-            onChange={e => setSelectedDistrict(e.target.value)}
-            className="bg-transparent flex-1 text-[11px] font-bold text-[#00355f] focus:outline-none"
-          >
-            <option value="ALL">Wilayah: Semua Kecamatan ({reports.length} Tiket)</option>
-            {availableDistricts.map(d => (
-              <option key={d} value={d}>
-                Kecamatan {d}
-              </option>
-            ))}
-          </select>
-        </div>
-      </header>
-
-      <main className="flex-1 p-4 space-y-5">
-        {/* =========================================================================
-            TAB 1: DASHBOARD EKSEKUTIF, VALIDASI SAW & PUBLIKASI
-            ========================================================================= */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#00355f]">
-                  DASHBOARD REAL-TIME
-                </span>
-                <h2 className="text-sm font-bold text-[#131b2e]">
-                  Ringkasan Kinerja & Validasi
-                </h2>
-              </div>
-              <span className="text-[10px] text-[#42474f] font-semibold bg-[#eaedff] px-2 py-0.5 rounded-md">
-                {filteredReports.length} Total Tiket
-              </span>
-            </div>
-
-            {/* 4 Metric Cards (100% Real Data) */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs flex flex-col justify-between">
-                <div className="flex justify-between items-center text-[#42474f] text-[11px]">
-                  <span>Total Lap. Aktif</span>
-                  <span className="material-symbols-outlined text-[18px] text-[#006496]">
-                    folder
-                  </span>
-                </div>
-                <span className="text-2xl font-black text-[#00355f] my-0.5">
-                  {totalActive}
-                </span>
-                <span className="text-[10px] text-[#006496] font-semibold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[12px]">schedule</span>
-                  {needVerification} Butuh Verifikasi
-                </span>
-              </div>
-
-              <div className="bg-[#ffdad6]/40 p-3 rounded-2xl border border-[#ffdad6] shadow-xs flex flex-col justify-between">
-                <div className="flex justify-between items-center text-[#ba1a1a] text-[11px] font-bold">
-                  <span>Darurat / Kritis</span>
-                  <span className="material-symbols-outlined text-[18px]">emergency</span>
-                </div>
-                <span className="text-2xl font-black text-[#ba1a1a] my-0.5">
-                  {criticalCount} Kasus
-                </span>
-                <span className="text-[10px] text-[#ba1a1a] font-semibold">
-                  Skor SAW &ge; 0.85
-                </span>
-              </div>
-
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs flex flex-col justify-between">
-                <div className="flex justify-between items-center text-[#42474f] text-[11px]">
-                  <span>Tuntas Selesai</span>
-                  <span className="material-symbols-outlined text-[18px] text-[#005713]">
-                    task_alt
-                  </span>
-                </div>
-                <span className="text-2xl font-black text-[#005713] my-0.5">
-                  {completedCount}{' '}
-                  <span className="text-xs font-bold">({completionPct}%)</span>
-                </span>
-                <span className="text-[10px] text-[#005713] font-bold">
-                  {inProgressCount} Sedang Dikerjakan
-                </span>
-              </div>
-
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs flex flex-col justify-between">
-                <div className="flex justify-between items-center text-[#42474f] text-[11px]">
-                  <span>Penyelesaian Wilayah</span>
-                  <span className="material-symbols-outlined text-[18px] text-[#006496]">
-                    bar_chart
-                  </span>
-                </div>
-                {districtCompletion.length === 0 ? (
-                  <p className="text-[10px] text-[#727780] my-auto pt-1">
-                    Belum ada data wilayah
-                  </p>
-                ) : (
-                  <div className="space-y-1 mt-1 text-[10px]">
-                    {districtCompletion.map(d => (
-                      <div key={d.district}>
-                        <div className="flex justify-between font-bold text-[#131b2e]">
-                          <span className="truncate">{d.district}</span>
-                          <span>
-                            {d.done}/{d.total}
-                          </span>
-                        </div>
-                        <div className="w-full bg-[#dae2fd] h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-[#00355f] h-full"
-                            style={{ width: `${d.pct}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Peta Analitik & Geofencing Card */}
-            <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-[#131b2e] flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[#00355f] text-[18px]">
-                    troubleshoot
-                  </span>
-                  Peta Analitik & Geofencing
-                </h3>
-                <span className="text-[10px] text-[#006496] font-bold">
-                  Radius: {geofenceRadius}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[10px] font-bold">
-                {[
-                  { id: 'all', label: 'Semua' },
-                  { id: 'public_space', label: 'Ruang Publik' },
-                  { id: 'public_service', label: 'Fasilitas Umum' },
-                  { id: 'transit', label: 'Transportasi' },
-                ].map(cat => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setMapCategoryFilter(cat.id as any)}
-                    className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-                      mapCategoryFilter === cat.id
-                        ? 'bg-[#00355f] text-white'
-                        : 'bg-[#f2f3ff] text-[#131b2e]'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#42474f] flex-wrap">
-                <span>URGENSI:</span>
-                <span className="px-2 py-0.5 rounded-md bg-[#ffdad6] text-[#ba1a1a]">
-                  Kritis ({criticalCount})
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-[#cce5ff] text-[#00517b]">
-                  Sedang ({moderateCount})
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-[#a3f69c]/50 text-[#003d0b]">
-                  Rendah ({mildCount})
-                </span>
-              </div>
-
-              <LeafletMapView
-                reports={mapReports}
-                heightClass="h-48"
-                geofenceRadiusMeters={radiusMeters}
-                onSelectReport={id => {
-                  setSelectedTicketId(id);
-                  showToast(`Tiket ${id} dipilih.`);
-                }}
-              />
-
-              <div className="p-2.5 bg-[#f2f3ff] rounded-xl flex items-center justify-between text-[11px] font-bold text-[#00355f]">
-                <div className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[16px] text-[#006496]">
-                    hub
-                  </span>
-                  <span>{spatialClusters.length} Klaster Berdekatan Terdeteksi</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('peta')}
-                  className="text-[10px] bg-[#dae2fd] px-2 py-0.5 rounded-md hover:bg-[#cce5ff]"
-                >
-                  Detail Peta &rarr;
-                </button>
-              </div>
-            </div>
-
-            {/* SISTEM PENDUKUNG KEPUTUSAN: Manajemen Validasi & Peringkat SAW */}
-            <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#006496]">
-                    SISTEM PENDUKUNG KEPUTUSAN
-                  </span>
-                  <h3 className="text-xs font-bold text-[#131b2e]">
-                    Antrean Laporan Warga & Peringkat SAW
-                  </h3>
-                </div>
-                <span className="bg-[#d2e4ff] text-[#001c37] text-[10px] font-bold px-2 py-0.5 rounded-md">
-                  {totalActive} Aktif
-                </span>
-              </div>
-
-              {/* Working Sub-tabs */}
-              <div className="grid grid-cols-3 gap-1 bg-[#f2f3ff] p-1 rounded-xl text-[10px] font-bold text-center">
-                <button
-                  type="button"
-                  onClick={() => setSawQueueTab('antrean')}
-                  className={`py-1.5 rounded-lg transition-colors ${
-                    sawQueueTab === 'antrean'
-                      ? 'bg-white text-[#00355f] shadow-xs'
-                      : 'text-[#42474f] hover:text-[#00355f]'
-                  }`}
-                >
-                  Baru Masuk ({needVerification})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSawQueueTab('prioritas')}
-                  className={`py-1.5 rounded-lg transition-colors ${
-                    sawQueueTab === 'prioritas'
-                      ? 'bg-white text-[#00355f] shadow-xs'
-                      : 'text-[#42474f] hover:text-[#00355f]'
-                  }`}
-                >
-                  Prioritas SAW ({totalActive})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSawQueueTab('dikerjakan')}
-                  className={`py-1.5 rounded-lg transition-colors ${
-                    sawQueueTab === 'dikerjakan'
-                      ? 'bg-white text-[#00355f] shadow-xs'
-                      : 'text-[#42474f] hover:text-[#00355f]'
-                  }`}
-                >
-                  Diproses ({inProgressCount})
-                </button>
-              </div>
-
-              {queueReports.length === 0 ? (
-                <div className="p-6 text-center bg-[#f2f3ff] rounded-xl space-y-1.5">
-                  <span className="material-symbols-outlined text-[28px] text-[#727780]">
-                    inbox
-                  </span>
-                  <p className="text-xs font-bold text-[#131b2e]">
-                    Tidak Ada Tiket pada Tab Ini
-                  </p>
-                  <p className="text-[11px] text-[#42474f]">
-                    Laporan baru yang dikirim oleh warga melalui Portal Warga akan langsung tampil di sini secara otomatis.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {queueReports.map(rep => {
-                    const isSelected = activeDispositionReport?.id === rep.id;
-                    return (
-                      <div
-                        key={rep.id}
-                        onClick={() => setSelectedTicketId(rep.id)}
-                        className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2.5 ${
-                          isSelected
-                            ? 'bg-white border-2 border-[#00355f] shadow-sm'
-                            : 'bg-[#faf8ff] border-[#eaedff] hover:border-[#006496]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-mono font-bold text-[#00355f] bg-[#eaedff] px-2 py-0.5 rounded">
-                              {rep.id}
-                            </span>
-                            <span className="text-[10px] text-[#42474f]">{rep.createdAt}</span>
-                          </div>
-                          <div className="bg-[#00355f] text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                            RANK #{rep.sawScores.rank || 1} • SAW:{' '}
-                            {rep.sawScores.totalSaw.toFixed(3)}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2.5">
-                          {rep.photoBefore && (
-                            <div className="w-16 h-16 rounded-lg bg-[#eaedff] overflow-hidden flex-shrink-0">
-                              <img
-                                src={rep.photoBefore}
-                                alt={rep.title}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-[12px] font-bold text-[#131b2e] leading-snug">
-                              {rep.title}
-                            </h4>
-                            <p className="text-[10px] text-[#42474f] mt-0.5">
-                              Kec. {rep.district} • {rep.address}
-                            </p>
-                            <p className="text-[11px] text-[#42474f] mt-1 line-clamp-2">
-                              {rep.description}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* SAW Criteria Bars */}
-                        <div className="grid grid-cols-2 gap-2 pt-1 text-[10px] border-t border-[#eaedff]">
-                          <div>
-                            <div className="flex justify-between font-bold text-[#ba1a1a]">
-                              <span>C1 Keselamatan (35%)</span>
-                              <span>{rep.sawScores.c1Safety.toFixed(2)}</span>
-                            </div>
-                            <div className="w-full bg-[#dae2fd] h-1 rounded-full overflow-hidden mt-0.5">
-                              <div
-                                className="bg-[#ba1a1a] h-full"
-                                style={{
-                                  width: `${Math.min(100, rep.sawScores.c1Safety * 100)}%`,
-                                }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex justify-between font-bold text-[#006496]">
-                              <span>C2 Akses Difabel (30%)</span>
-                              <span>{rep.sawScores.c2Access.toFixed(2)}</span>
-                            </div>
-                            <div className="w-full bg-[#dae2fd] h-1 rounded-full overflow-hidden mt-0.5">
-                              <div
-                                className="bg-[#006496] h-full"
-                                style={{
-                                  width: `${Math.min(100, rep.sawScores.c2Access * 100)}%`,
-                                }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex justify-between font-bold text-[#00355f]">
-                              <span>C3 Pengguna (20%)</span>
-                              <span>{rep.sawScores.c3Users.toFixed(2)}</span>
-                            </div>
-                            <div className="w-full bg-[#dae2fd] h-1 rounded-full overflow-hidden mt-0.5">
-                              <div
-                                className="bg-[#00355f] h-full"
-                                style={{
-                                  width: `${Math.min(100, rep.sawScores.c3Users * 100)}%`,
-                                }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex justify-between font-bold text-[#42474f]">
-                              <span>C4 Fisik (15%)</span>
-                              <span>{rep.sawScores.c4Physical.toFixed(2)}</span>
-                            </div>
-                            <div className="w-full bg-[#dae2fd] h-1 rounded-full overflow-hidden mt-0.5">
-                              <div
-                                className="bg-[#42474f] h-full"
-                                style={{
-                                  width: `${Math.min(100, rep.sawScores.c4Physical * 100)}%`,
-                                }}
-                              ></div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 pt-1">
-                          {rep.status === 'submitted' && (
-                            <button
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation();
-                                handleVerifyReport(rep);
-                              }}
-                              className="flex-1 py-2 bg-[#eaedff] text-[#00355f] rounded-xl text-[11px] font-bold hover:bg-[#dae2fd] flex items-center justify-center gap-1"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">
-                                verified
-                              </span>
-                              <span>Validasi</span>
-                            </button>
-                          )}
-
-                          {rep.status !== 'in_progress' && (
-                            <button
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation();
-                                handleDispatchSpk(rep);
-                              }}
-                              className="flex-1 py-2 bg-[#00355f] text-white rounded-xl text-[11px] font-bold hover:bg-[#006496] flex items-center justify-center gap-1 shadow-xs"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">
-                                assignment_turned_in
-                              </span>
-                              <span>Terbitkan SPK & Kerjakan</span>
-                            </button>
-                          )}
-
-                          {rep.status === 'in_progress' && (
-                            <button
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation();
-                                setSelectedTicketId(rep.id);
-                                showToast(
-                                  `Silakan unggah foto hasil perbaikan & klik Selesaikan di bawah untuk tiket ${rep.id}.`
-                                );
-                              }}
-                              className="flex-1 py-2 bg-[#005713] text-[#a3f69c] rounded-xl text-[11px] font-bold hover:bg-[#003d0b] flex items-center justify-center gap-1"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">
-                                task_alt
-                              </span>
-                              <span>Siap Diselesaikan</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation();
-                              onDeleteReport(rep.id);
-                              showToast(`Tiket ${rep.id} dihapus dari database.`);
-                            }}
-                            title="Hapus Laporan"
-                            className="w-9 h-9 rounded-xl bg-[#ffdad6]/60 hover:bg-[#ffdad6] text-[#ba1a1a] flex items-center justify-center flex-shrink-0"
-                          >
-                            <span className="material-symbols-outlined text-[17px]">
-                              delete
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Disposisi Tim Teknis & Publikasi (Sebelum-Sesudah) */}
-            {activeDispositionReport && (
-              <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-[#00355f] text-white flex items-center justify-center">
-                      <span className="material-symbols-outlined text-[16px]">groups</span>
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold text-[#131b2e]">
-                        Disposisi Tim Teknis & Penyelesaian Tiket
-                      </h3>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-[#00355f] font-mono font-bold bg-[#eaedff] px-2 py-0.5 rounded">
-                    {activeDispositionReport.id}
-                  </span>
-                </div>
-
-                {/*Pilih Tiket Target*/}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-[#131b2e]">
-                    Tiket Laporan yang Diproses:
-                  </label>
-                  <select
-                    value={activeDispositionReport.id}
-                    onChange={e => setSelectedTicketId(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-[#f2f3ff] text-xs font-bold text-[#00355f] border border-[#dae2fd] focus:outline-none"
-                  >
-                    {filteredReports.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.id} — {r.placeName} ({r.statusLabel})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Dropdown Regu Pelaksana */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-[#131b2e]">
-                    Penugasan Regu Pelaksana:
-                  </label>
-                  <select
-                    value={selectedReguId}
-                    onChange={e => setSelectedReguId(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-[#f2f3ff] text-xs font-bold text-[#00355f] border border-[#dae2fd] focus:outline-none"
-                  >
-                    {TRC_TEAMS.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Catatan Tindakan Petugas */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-[#131b2e]">
-                    Catatan Tindakan / Hasil Perbaikan:
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={fieldNote}
-                    onChange={e => setFieldNote(e.target.value)}
-                    placeholder="Contoh: Pemasangan kembali ubin guiding block & perbaikan kelandaian ramp..."
-                    className="w-full p-2.5 rounded-xl bg-[#f2f3ff] text-xs text-[#131b2e] border border-[#dae2fd] focus:outline-none focus:bg-white resize-none"
-                  />
-                </div>
-
-                {/* Unggah Bukti Pasca-Perbaikan */}
-                <div className="space-y-2 pt-1">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-bold text-[#131b2e]">
-                      Dokumentasi Sebelum & Sesudah:
-                    </span>
-                    {uploadedAfterPhoto && (
-                      <button
-                        type="button"
-                        onClick={() => setUploadedAfterPhoto(null)}
-                        className="text-[10px] text-[#ba1a1a] font-bold hover:underline"
-                      >
-                        Ganti / Hapus Foto
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Sebelum */}
-                    <div className="relative h-28 rounded-xl overflow-hidden border border-[#eaedff] bg-[#f2f3ff] flex items-center justify-center">
-                      {activeDispositionReport.photoBefore ? (
-                        <img
-                          src={activeDispositionReport.photoBefore}
-                          alt="Sebelum"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-[10px] text-[#727780] p-2 text-center">
-                          Warga tidak melampirkan foto awal
-                        </span>
-                      )}
-                      <span className="absolute top-1.5 left-1.5 bg-[#ba1a1a] text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
-                        Sebelum
-                      </span>
-                    </div>
-
-                    {/* Sesudah / Real Upload Box */}
-                    <div
-                      onClick={() => afterPhotoInputRef.current?.click()}
-                      className="relative h-28 rounded-xl border-2 border-dashed border-[#006496] bg-[#f2f3ff] hover:bg-[#eaedff] cursor-pointer flex flex-col items-center justify-center p-2 text-center transition-colors overflow-hidden"
-                    >
-                      {uploadedAfterPhoto || activeDispositionReport.photoAfter ? (
-                        <>
-                          <img
-                            src={uploadedAfterPhoto || activeDispositionReport.photoAfter}
-                            alt="Sesudah"
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                          <span className="absolute top-1.5 right-1.5 bg-[#005713] text-[#a3f69c] text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            Sesudah
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="material-symbols-outlined text-[24px] text-[#006496]">
-                            {isUploadingPhoto ? 'hourglass_top' : 'add_photo_alternate'}
-                          </span>
-                          <span className="text-[10px] font-bold text-[#00355f] mt-1">
-                            {isUploadingPhoto ? 'Memproses...' : 'Unggah Foto Sesudah'}
-                          </span>
-                          <span className="text-[8px] text-[#42474f]">
-                            Ketuk untuk pilih gambar
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="grid grid-cols-1 gap-2 pt-1">
-                  {activeDispositionReport.status !== 'completed' && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleDispatchSpk(
-                          activeDispositionReport,
-                          selectedReguId,
-                          fieldNote
-                        )
-                      }
-                      className="w-full py-2.5 bg-[#00355f] hover:bg-[#006496] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs"
-                    >
-                      <span className="material-symbols-outlined text-[17px]">
-                        engineering
-                      </span>
-                      <span>Simpan Disposisi SPK & Tugaskan Regu</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => handleCompleteReport(activeDispositionReport)}
-                    className="w-full py-3 bg-[#005713] hover:bg-[#003d0b] text-[#a3f69c] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">public</span>
-                    <span>Publikasikan ke Portal Warga & Selesaikan Tiket</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* =========================================================================
-            TAB 2: PETA & KLASTER GEOFENCING REAL-TIME
-            ========================================================================= */}
-        {activeTab === 'peta' && (
-          <div className="space-y-4">
-            <div className="bg-white p-3 rounded-2xl border border-[#eaedff] space-y-2">
-              <div className="text-center font-bold text-xs text-[#131b2e]">
-                Radius Deteksi Geofencing Klaster
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  {(['10m', '20m', '50m'] as const).map(rad => (
-                    <button
-                      key={rad}
-                      onClick={() => setGeofenceRadius(rad)}
-                      className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
-                        geofenceRadius === rad
-                          ? 'bg-[#00355f] text-white shadow-xs'
-                          : 'bg-[#f2f3ff] text-[#00355f] hover:bg-[#eaedff]'
-                      }`}
-                    >
-                      {rad}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#131b2e]">Auto-Merge</span>
-                  <button
-                    onClick={() => {
-                      setAutoMerge(!autoMerge);
-                      showToast(
-                        autoMerge ? 'Auto-merge dinonaktifkan.' : 'Auto-merge diaktifkan.'
-                      );
-                    }}
-                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${
-                      autoMerge ? 'bg-[#00355f]' : 'bg-[#dae2fd]'
-                    }`}
-                  >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-                        autoMerge ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    ></div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-2 rounded-2xl border border-[#eaedff] shadow-xs space-y-2">
-              <LeafletMapView
-                reports={filteredReports}
-                heightClass="h-60"
-                geofenceRadiusMeters={radiusMeters}
-                onSelectReport={id => {
-                  setSelectedTicketId(id);
-                  setActiveTab('dashboard');
-                  showToast(`Membuka tiket ${id} pada Dashboard.`);
-                }}
-              />
-              <div className="flex justify-between items-center px-2 pt-1 text-[10px] font-bold text-[#42474f]">
-                <span>Total Titik: {filteredReports.length}</span>
-                <span>Klaster Radius {geofenceRadius}: {spatialClusters.length}</span>
-              </div>
-            </div>
-
-            {spatialClusters.length === 0 ? (
-              <div className="bg-white p-5 rounded-2xl border border-[#eaedff] text-center space-y-2">
-                <span className="material-symbols-outlined text-[30px] text-[#006496]">
-                  radar
-                </span>
-                <h4 className="text-xs font-bold text-[#131b2e]">
-                  Tidak Ada Duplikasi Laporan pada Radius {geofenceRadius}
-                </h4>
-                <p className="text-[11px] text-[#42474f]">
-                  Klaster otomatis terbentuk apabila terdapat 2 atau lebih laporan warga yang berjarak kurang dari {geofenceRadius}.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {spatialClusters.map(clust => (
-                  <div
-                    key={clust.clusterId}
-                    className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="bg-[#ffdad6] text-[#ba1a1a] text-[10px] font-extrabold px-2 py-0.5 rounded">
-                          Klaster Spasial Aktif
-                        </span>
-                        <div className="text-xs font-mono font-bold text-[#00355f] mt-1">
-                          {clust.clusterId}
-                        </div>
-                        <h4 className="text-xs font-bold text-[#131b2e]">
-                          {clust.placeName}
-                        </h4>
-                        <p className="text-[10px] text-[#42474f]">
-                          Kec. {clust.district} • {clust.items.length} Laporan Berdekatan
-                        </p>
-                      </div>
-                      <div className="bg-[#f2f3ff] p-2 rounded-xl text-center">
-                        <span className="text-[9px] text-[#42474f] font-semibold block">
-                          SKOR MAKS
-                        </span>
-                        <span className="text-xs font-extrabold text-[#ba1a1a] font-mono">
-                          {clust.maxSaw.toFixed(3)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      {clust.items.map(item => (
-                        <div
-                          key={item.id}
-                          onClick={() => {
-                            setSelectedTicketId(item.id);
-                            setActiveTab('dashboard');
-                          }}
-                          className="p-2 bg-[#f2f3ff] hover:bg-[#eaedff] cursor-pointer rounded-xl flex items-center justify-between"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 font-mono font-bold text-[11px] text-[#00355f]">
-                              <span>{item.id}</span>
-                              <span className="text-[10px] text-[#42474f] font-normal">
-                                {item.createdAt}
-                              </span>
-                            </div>
-                            <div className="text-[11px] font-semibold text-[#131b2e] truncate">
-                              {item.title}
-                            </div>
-                          </div>
-                          <span className="material-symbols-outlined text-[#727780] text-[18px]">
-                            chevron_right
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
 
             <button
               type="button"
               onClick={handleExportCsv}
-              className="w-full py-2.5 bg-[#00355f] text-white rounded-xl text-xs font-bold hover:bg-[#006496] transition-colors flex items-center justify-center gap-1.5"
+              className="h-9 px-3.5 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
             >
-              <span className="material-symbols-outlined text-[16px]">file_download</span>
-              <span>Ekspor Titik Koordinat GPS (CSV)</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Ekspor CSV</span>
             </button>
           </div>
-        )}
+        </header>
 
-        {/* =========================================================================
-            TAB 3: TUGAS OPERASIONAL LAPANGAN TRC PUPR
-            ========================================================================= */}
-        {activeTab === 'tugas' && (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <span className="bg-[#cce5ff] text-[#00517b] text-[10px] font-extrabold px-3 py-1 rounded-full uppercase">
-                Operasional Lapangan TRC PUPR
-              </span>
-              <h2 className="text-sm font-black text-[#131b2e] tracking-tight pt-1">
-                Daftar Tugas & Penanganan Tiket
-              </h2>
-              <p className="text-xs text-[#42474f]">
-                Kelola verifikasi laporan warga, penerbitan SPK, progres lapangan, hingga penyelesaian.
-              </p>
+        {/* Main Responsive Content Container */}
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-8 pb-24 lg:pb-12 space-y-6">
+          {/* Global Workspace Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 print:hidden">
+            <div className="relative flex-1 max-w-xl">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Cari ID tiket, nama tempat, alamat, atau nomor SPK..."
+                className="w-full h-10 pl-10 pr-4 rounded-lg bg-white border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#00355f] focus:ring-2 focus:ring-[#00355f]/10"
+              />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs text-center">
-                <span className="text-[10px] text-[#42474f] font-semibold block">
-                  MENUNGGU
-                </span>
-                <span className="text-xl font-black text-[#ba1a1a] block my-0.5">
-                  {needVerification}
-                </span>
-                <span className="text-[9px] text-[#42474f] font-bold">Verifikasi</span>
-              </div>
-
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs text-center">
-                <span className="text-[10px] text-[#42474f] font-semibold block">
-                  SPK AKTIF
-                </span>
-                <span className="text-xl font-black text-[#00355f] block my-0.5">
-                  {inProgressCount}
-                </span>
-                <span className="text-[9px] text-[#006496] font-bold">Lapangan</span>
-              </div>
-
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs text-center">
-                <span className="text-[10px] text-[#42474f] font-semibold block">
-                  SELESAI
-                </span>
-                <span className="text-xl font-black text-[#005713] block my-0.5">
-                  {completedCount}
-                </span>
-                <span className="text-[9px] text-[#003d0b] font-bold">Tuntas 100%</span>
-              </div>
-            </div>
-
-            {/* Working Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
-              {[
-                { id: 'all', label: `Semua (${filteredReports.length})` },
-                { id: 'submitted', label: `Baru (${needVerification})` },
-                { id: 'in_progress', label: `Dikerjakan (${inProgressCount})` },
-                { id: 'completed', label: `Selesai (${completedCount})` },
-              ].map(f => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setTaskFilter(f.id as any)}
-                  className={`px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
-                    taskFilter === f.id
-                      ? 'bg-[#00355f] text-white'
-                      : 'bg-[#f2f3ff] text-[#42474f] hover:bg-[#eaedff]'
-                  }`}
+            <div className="flex items-center gap-2.5">
+              {/* Mobile/Tablet District Dropdown */}
+              <div className="lg:hidden flex-1 sm:flex-initial">
+                <select
+                  aria-label="Filter Kecamatan"
+                  value={selectedDistrict}
+                  onChange={e => setSelectedDistrict(e.target.value)}
+                  className="w-full sm:w-auto h-10 px-3 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-[#00355f]"
                 >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {filteredTasks.length === 0 ? (
-              <div className="bg-white p-6 rounded-2xl border border-[#eaedff] text-center space-y-2">
-                <span className="material-symbols-outlined text-[32px] text-[#727780]">
-                  assignment_late
-                </span>
-                <p className="text-xs font-bold text-[#131b2e]">
-                  Belum Ada Tugas pada Filter Ini
-                </p>
-                <p className="text-[11px] text-[#42474f]">
-                  Setiap laporan yang masuk dari warga dapat langsung diterbitkan SPK dan dipantau progresnya di halaman ini.
-                </p>
+                  <option value="ALL">Semua Kecamatan ({reports.length})</option>
+                  {availableDistricts.map(d => (
+                    <option key={d} value={d}>
+                      Kec. {d}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredTasks.map(task => {
-                  const pct =
-                    task.status === 'completed'
-                      ? 100
-                      : task.assignedTeam?.progressPercent ||
-                        (task.status === 'in_progress'
-                          ? 50
-                          : task.status === 'verified'
-                          ? 25
-                          : 0);
-                  return (
-                    <div
-                      key={task.id}
-                      className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3"
-                    >
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-xs text-[#00355f]">
-                            {task.spkNumber || task.id}
-                          </span>
-                          <span className="bg-[#eaedff] text-[#00355f] text-[10px] font-bold px-2 py-0.5 rounded font-mono">
-                            SAW {task.sawScores.totalSaw.toFixed(3)}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
-                            task.status === 'completed'
-                              ? 'bg-[#a3f69c] text-[#002204]'
-                              : task.status === 'in_progress'
-                              ? 'bg-[#cce5ff] text-[#00517b]'
-                              : task.status === 'verified'
-                              ? 'bg-[#d2e4ff] text-[#00355f]'
-                              : 'bg-[#ffdad6] text-[#ba1a1a]'
-                          }`}
-                        >
-                          {task.statusLabel}
-                        </span>
-                      </div>
 
+              <div className="hidden md:flex items-center gap-2 text-xs text-slate-500 font-mono tabular-nums whitespace-nowrap">
+                <span>Menampilkan {filteredReports.length} tiket</span>
+                {selectedDistrict !== 'ALL' && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDistrict('ALL')}
+                      className="text-[#00355f] font-sans font-semibold hover:underline"
+                    >
+                      Reset Wilayah
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* =====================================================================
+              TAB 1: DASHBOARD EKSEKUTIF, VALIDASI SAW & PUBLIKASI
+              ===================================================================== */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-6">
+              {/* 4-Column Responsive KPI Strip */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                    <span>Laporan Aktif</span>
+                    <FolderKanban className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900 font-mono tabular-nums">
+                    {totalActive}
+                  </p>
+                  <p className="text-xs text-amber-700 font-medium tabular-nums">
+                    {needVerification} menunggu verifikasi
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                    <span>Prioritas Kritis</span>
+                    <AlertTriangle className="w-4 h-4 text-red-600" />
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-bold text-red-700 font-mono tabular-nums">
+                    {criticalCount}
+                  </p>
+                  <p className="text-xs text-slate-500 tabular-nums">
+                    Skor SAW &ge; 0.850
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                    <span>SPK Lapangan</span>
+                    <Wrench className="w-4 h-4 text-[#00355f]" />
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-bold text-[#00355f] font-mono tabular-nums">
+                    {inProgressCount}
+                  </p>
+                  <p className="text-xs text-slate-500 tabular-nums">
+                    Ditangani regu TRC PUPR
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                    <span>Tuntas Selesai</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-2xl sm:text-3xl font-bold text-emerald-700 font-mono tabular-nums">
+                      {completedCount}
+                    </p>
+                    <span className="text-xs font-semibold text-emerald-700 font-mono tabular-nums">
+                      ({completionPct}%)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 tabular-nums">
+                    Rata-rata indeks SAW {avgSaw}
+                  </p>
+                </div>
+              </div>
+
+              {/* Master-Detail 12-Column Grid */}
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+                {/* Left Column: SAW Queue + Geospatial Mini-Analytics */}
+                <div className="xl:col-span-7 space-y-6">
+                  {/* SAW Decision Support Queue */}
+                  <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <span className="text-[10px] text-[#42474f]">
-                          Tiket: {task.id} • {task.createdAt}
-                        </span>
-                        <h4 className="text-xs font-bold text-[#131b2e] leading-snug mt-0.5">
-                          {task.title}
-                        </h4>
-                        <p className="text-[10px] text-[#42474f] flex items-center gap-1 mt-0.5">
-                          <span className="material-symbols-outlined text-[13px] text-[#006496]">
-                            location_on
-                          </span>
-                          Kec. {task.district} • {task.address}
+                        <h2 className="text-sm sm:text-base font-bold text-slate-900">
+                          Antrean Validasi & Pemeringkatan SAW
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Urutan objektif berdasarkan bobot keselamatan, difabel, cakupan publik, dan fisik
                         </p>
                       </div>
 
-                      {task.assignedTeam && (
-                        <div className="p-2.5 bg-[#f2f3ff] rounded-xl flex items-center justify-between">
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-bold text-[#131b2e] truncate">
-                              {task.assignedTeam.name}
+                      {/* Segmented Filter Control */}
+                      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg self-start sm:self-auto overflow-x-auto max-w-full">
+                        {[
+                          { id: 'prioritas', label: `Prioritas (${totalActive})` },
+                          { id: 'antrean', label: `Baru (${needVerification})` },
+                          { id: 'dikerjakan', label: `Diproses (${inProgressCount})` },
+                        ].map(tab => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setSawQueueTab(tab.id as any)}
+                            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 tabular-nums ${
+                              sawQueueTab === tab.id
+                                ? 'bg-white text-slate-900 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {queueReports.length === 0 ? (
+                      <div className="p-8 sm:p-12 text-center space-y-2">
+                        <FolderKanban className="w-8 h-8 text-slate-400 mx-auto" />
+                        <p className="text-sm font-semibold text-slate-900">
+                          Tidak Ada Tiket pada Kategori Ini
+                        </p>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                          Laporan baru yang dikirim warga melalui Portal Warga akan langsung masuk ke
+                          daftar ini beserta perhitungan skor SAW secara otomatis.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-200">
+                        {queueReports.map(rep => {
+                          const isSelected = activeDispositionReport?.id === rep.id;
+                          const thumbBroken = brokenImages[`queue-${rep.id}`];
+
+                          return (
+                            <article
+                              key={rep.id}
+                              onClick={() => openTicketInspector(rep.id, false)}
+                              className={`p-4 sm:p-5 transition-colors cursor-pointer space-y-3.5 ${
+                                isSelected ? 'bg-sky-50/50' : 'hover:bg-slate-50/80'
+                              }`}
+                            >
+                              {/* Unboxed Metadata Row */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex flex-wrap items-center gap-1.5 text-slate-500">
+                                  <span className="font-mono tabular-nums font-bold text-[#00355f]">
+                                    {rep.id}
+                                  </span>
+                                  <span aria-hidden="true">·</span>
+                                  <span>Kec. {rep.district}</span>
+                                  <span aria-hidden="true">·</span>
+                                  <span className="tabular-nums">{rep.createdAt}</span>
+                                </div>
+
+                                <div className="flex items-center gap-2 font-mono tabular-nums text-xs">
+                                  <span className="font-semibold text-slate-700">
+                                    Peringkat #{rep.sawScores.rank || 1}
+                                  </span>
+                                  <span className="text-slate-300" aria-hidden="true">
+                                    ·
+                                  </span>
+                                  <span
+                                    className={`font-bold ${
+                                      rep.sawScores.totalSaw >= 0.85
+                                        ? 'text-red-700'
+                                        : 'text-[#00355f]'
+                                    }`}
+                                  >
+                                    SAW {rep.sawScores.totalSaw.toFixed(3)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Content Body */}
+                              <div className="flex gap-3.5 items-start">
+                                {rep.photoBefore && !thumbBroken && (
+                                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                                    <img
+                                      src={rep.photoBefore}
+                                      alt={rep.title}
+                                      referrerPolicy="no-referrer"
+                                      onError={() =>
+                                        setBrokenImages(prev => ({
+                                          ...prev,
+                                          [`queue-${rep.id}`]: true,
+                                        }))
+                                      }
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                )}
+
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                                    {rep.title}
+                                  </h3>
+                                  <p className="text-xs text-slate-600 truncate">
+                                    {rep.placeName} — {rep.address}
+                                  </p>
+                                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                                    {rep.description}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* 4-Column SAW Breakdown */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-[11px]">
+                                {[
+                                  {
+                                    label: 'C1 Keselamatan',
+                                    val: rep.sawScores.c1Safety,
+                                    bar: 'bg-red-600',
+                                  },
+                                  {
+                                    label: 'C2 Difabel',
+                                    val: rep.sawScores.c2Access,
+                                    bar: 'bg-sky-600',
+                                  },
+                                  {
+                                    label: 'C3 Pengguna',
+                                    val: rep.sawScores.c3Users,
+                                    bar: 'bg-[#00355f]',
+                                  },
+                                  {
+                                    label: 'C4 Fisik',
+                                    val: rep.sawScores.c4Physical,
+                                    bar: 'bg-slate-600',
+                                  },
+                                ].map(crit => (
+                                  <div key={crit.label} className="space-y-1">
+                                    <div className="flex justify-between text-slate-600">
+                                      <span className="truncate">{crit.label}</span>
+                                      <span className="font-mono tabular-nums font-semibold text-slate-900">
+                                        {crit.val.toFixed(2)}
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                      <div
+                                        className={`${crit.bar} h-full`}
+                                        style={{
+                                          width: `${Math.min(100, crit.val * 100)}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Status & Action Row */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                                <StatusInline status={rep.status} label={rep.statusLabel} />
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {rep.status === 'submitted' && (
+                                    <button
+                                      type="button"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        handleVerifyReport(rep);
+                                      }}
+                                      className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                                    >
+                                      <FileCheck2 className="w-3.5 h-3.5 text-[#00355f]" />
+                                      <span>Validasi</span>
+                                    </button>
+                                  )}
+
+                                  {rep.status !== 'in_progress' && rep.status !== 'completed' && (
+                                    <button
+                                      type="button"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        handleDispatchSpk(rep);
+                                      }}
+                                      className="h-9 px-3.5 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                                    >
+                                      <Wrench className="w-3.5 h-3.5" />
+                                      <span>Terbitkan SPK</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      openTicketInspector(rep.id, true);
+                                    }}
+                                    className="xl:hidden h-9 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                                  >
+                                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                                    <span>Kelola</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      onDeleteReport(rep.id);
+                                      showToast(`Tiket ${rep.id} dihapus dari database.`);
+                                    }}
+                                    title="Hapus Laporan"
+                                    aria-label={`Hapus tiket ${rep.id}`}
+                                    className="h-9 w-9 rounded-lg border border-slate-200 hover:border-red-200 hover:bg-red-50 text-slate-500 hover:text-red-700 inline-flex items-center justify-center transition-colors shrink-0"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Map Preview & District Completion Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                    {/* Geospatial Mini Map */}
+                    <section className="md:col-span-7 bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-3.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900">
+                            Sebaran Geospasial & Geofencing
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Radius klaster {geofenceRadius} · {spatialClusters.length} klaster terdeteksi
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('peta')}
+                          className="text-xs font-semibold text-[#00355f] hover:underline inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+                        >
+                          <span>Peta Penuh</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <LeafletMapView
+                        reports={mapReports}
+                        heightClass="h-56 sm:h-64"
+                        geofenceRadiusMeters={radiusMeters}
+                        onSelectReport={id => {
+                          openTicketInspector(id, true);
+                          showToast(`Tiket ${id} dipilih pada panel disposisi.`);
+                        }}
+                      />
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 pt-1">
+                        <span>
+                          Kritis: <strong className="font-mono tabular-nums text-red-700">{criticalCount}</strong>
+                        </span>
+                        <span>·</span>
+                        <span>
+                          Sedang: <strong className="font-mono tabular-nums text-sky-700">{moderateCount}</strong>
+                        </span>
+                        <span>·</span>
+                        <span>
+                          Rendah: <strong className="font-mono tabular-nums text-emerald-700">{mildCount}</strong>
+                        </span>
+                      </div>
+                    </section>
+
+                    {/* District Completion Breakdown */}
+                    <section className="md:col-span-5 bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">
+                          Penyelesaian per Kecamatan
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Proporsi tiket selesai terhadap laporan masuk
+                        </p>
+                      </div>
+
+                      {districtCompletion.length === 0 ? (
+                        <div className="py-10 text-center text-xs text-slate-500">
+                          Belum ada data wilayah tercatat.
+                        </div>
+                      ) : (
+                        <div className="space-y-3.5">
+                          {districtCompletion.map(d => (
+                            <div key={d.district} className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-medium text-slate-800 truncate">
+                                  Kec. {d.district}
+                                </span>
+                                <span className="font-mono tabular-nums text-slate-600">
+                                  {d.done}/{d.total} ({d.pct}%)
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-[#00355f] h-full transition-all duration-200"
+                                  style={{ width: `${d.pct}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="text-[10px] text-[#42474f]">
-                              PJ: {task.assignedTeam.leadOfficer} ({task.assignedTeam.vehicle})
-                            </div>
-                          </div>
+                          ))}
                         </div>
                       )}
+                    </section>
+                  </div>
+                </div>
 
-                      {/* Progress Bar & Quick Progress Controls */}
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-[10px] font-bold text-[#00355f]">
-                          <span>Progres Penanganan</span>
-                          <span>{pct}%</span>
-                        </div>
-                        <div className="w-full bg-[#dae2fd] h-2 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-500 ${
-                              task.status === 'completed' ? 'bg-[#005713]' : 'bg-[#00355f]'
-                            }`}
-                            style={{ width: `${pct}%` }}
-                          ></div>
-                        </div>
+                {/* Right Column: Sticky Inspector & Disposition Panel */}
+                <div className="xl:col-span-5 xl:sticky xl:top-22">
+                  {renderInspectorPanel(activeDispositionReport)}
+                </div>
+              </div>
+            </div>
+          )}
 
-                        {task.status === 'in_progress' && (
-                          <div className="flex items-center gap-1 pt-1">
-                            {[25, 50, 75].map(stepPct => (
+          {/* =====================================================================
+              TAB 2: PETA & KLASTER GEOFENCING SPASIAL
+              ===================================================================== */}
+          {activeTab === 'peta' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Large Geospatial Map Canvas */}
+              <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Category Filter */}
+                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto">
+                    {[
+                      { id: 'all', label: 'Semua Fasilitas' },
+                      { id: 'public_space', label: 'Ruang Publik' },
+                      { id: 'public_service', label: 'Layanan Umum' },
+                      { id: 'transit', label: 'Transportasi' },
+                    ].map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setMapCategoryFilter(cat.id as any)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                          mapCategoryFilter === cat.id
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Geofence Radius Segmented Control */}
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="text-xs font-medium text-slate-500 whitespace-nowrap">
+                      Radius Klaster:
+                    </span>
+                    <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+                      {(['10m', '20m', '50m'] as const).map(rad => (
+                        <button
+                          key={rad}
+                          type="button"
+                          onClick={() => setGeofenceRadius(rad)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-mono tabular-nums font-semibold transition-colors whitespace-nowrap ${
+                            geofenceRadius === rad
+                              ? 'bg-[#00355f] text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {rad}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <LeafletMapView
+                  reports={mapReports}
+                  heightClass="h-[360px] sm:h-[460px] lg:h-[560px]"
+                  geofenceRadiusMeters={radiusMeters}
+                  onSelectReport={id => {
+                    openTicketInspector(id, true);
+                    if (window.innerWidth >= 1280) {
+                      setActiveTab('dashboard');
+                    }
+                    showToast(`Membuka detail tiket ${id}.`);
+                  }}
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 pt-1">
+                  <span className="font-mono tabular-nums">
+                    Total titik terpetakan: {mapReports.length} laporan
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span>Penggabungan Duplikasi Otomatis</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={autoMerge}
+                      onClick={() => {
+                        setAutoMerge(!autoMerge);
+                        showToast(
+                          autoMerge ? 'Auto-merge klaster dinonaktifkan.' : 'Auto-merge klaster diaktifkan.'
+                        );
+                      }}
+                      className={`w-10 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                        autoMerge ? 'bg-[#00355f]' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform ${
+                          autoMerge ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Spatial Clusters Column */}
+              <div className="lg:col-span-4 space-y-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-900">
+                        Deteksi Klaster Berdekatan
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Kalkulasi jarak Haversine &le; {geofenceRadius}
+                      </p>
+                    </div>
+                    <span className="font-mono tabular-nums text-sm font-bold text-[#00355f]">
+                      {spatialClusters.length} Klaster
+                    </span>
+                  </div>
+
+                  {spatialClusters.length === 0 ? (
+                    <div className="py-8 text-center space-y-2 border-t border-slate-100">
+                      <MapPin className="w-7 h-7 text-slate-400 mx-auto" />
+                      <p className="text-xs font-semibold text-slate-800">
+                        Tidak Ada Duplikasi pada Radius {geofenceRadius}
+                      </p>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Klaster otomatis terbentuk apabila terdapat 2 atau lebih laporan warga dalam
+                        jarak kurang dari {geofenceRadius}.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-200 border-t border-slate-100">
+                      {spatialClusters.map(clust => (
+                        <div key={clust.clusterId} className="py-3.5 space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="font-mono tabular-nums text-xs font-bold text-[#00355f]">
+                                {clust.clusterId}
+                              </span>
+                              <h3 className="text-xs font-bold text-slate-900 mt-0.5">
+                                {clust.placeName}
+                              </h3>
+                              <p className="text-[11px] text-slate-500">
+                                Kec. {clust.district} · {clust.items.length} tiket berdekatan
+                              </p>
+                            </div>
+                            <div className="text-right font-mono tabular-nums">
+                              <span className="text-[10px] text-slate-500 block">SAW Maks</span>
+                              <span className="text-xs font-bold text-red-700">
+                                {clust.maxSaw.toFixed(3)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {clust.items.map(item => (
                               <button
-                                key={stepPct}
+                                key={item.id}
                                 type="button"
-                                onClick={() => handleUpdateProgress(task, stepPct)}
-                                className={`flex-1 py-1 rounded-lg text-[10px] font-bold border ${
-                                  pct === stepPct
-                                    ? 'bg-[#00355f] text-white border-[#00355f]'
-                                    : 'bg-[#f2f3ff] text-[#00355f] border-[#dae2fd]'
-                                }`}
+                                onClick={() => {
+                                  openTicketInspector(item.id, true);
+                                  if (window.innerWidth >= 1280) {
+                                    setActiveTab('dashboard');
+                                  }
+                                }}
+                                className="w-full p-2.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-left flex items-center justify-between gap-2 transition-colors"
                               >
-                                {stepPct}%
+                                <div className="min-w-0">
+                                  <p className="text-xs font-mono tabular-nums font-semibold text-[#00355f]">
+                                    {item.id} · {item.createdAt}
+                                  </p>
+                                  <p className="text-xs font-medium text-slate-800 truncate">
+                                    {item.title}
+                                  </p>
+                                </div>
+                                <ArrowUpRight className="w-4 h-4 text-slate-400 shrink-0" />
                               </button>
                             ))}
                           </div>
-                        )}
-                      </div>
-
-                      {/* Task Action Buttons */}
-                      {task.status !== 'completed' && (
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          {task.status === 'submitted' && (
-                            <button
-                              type="button"
-                              onClick={() => handleVerifyReport(task)}
-                              className="py-2 bg-[#f2f3ff] text-[#00355f] rounded-xl text-xs font-bold hover:bg-[#eaedff] flex items-center justify-center gap-1"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">
-                                verified
-                              </span>
-                              <span>Validasi</span>
-                            </button>
-                          )}
-
-                          {task.status !== 'in_progress' ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDispatchSpk(task)}
-                              className="py-2 bg-[#00355f] text-white rounded-xl text-xs font-bold hover:bg-[#006496] flex items-center justify-center gap-1 col-span-1"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">
-                                play_arrow
-                              </span>
-                              <span>Terbitkan SPK</span>
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedTicketId(task.id);
-                                  setActiveTab('dashboard');
-                                }}
-                                className="py-2 bg-[#eaedff] text-[#00355f] rounded-xl text-xs font-bold hover:bg-[#dae2fd] flex items-center justify-center gap-1"
-                              >
-                                <span className="material-symbols-outlined text-[15px]">
-                                  add_photo_alternate
-                                </span>
-                                <span>Lampirkan Foto</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleCompleteReport(task)}
-                                className="py-2 bg-[#005713] text-[#a3f69c] rounded-xl text-xs font-bold hover:bg-[#003d0b] flex items-center justify-center gap-1"
-                              >
-                                <span className="material-symbols-outlined text-[15px]">
-                                  task_alt
-                                </span>
-                                <span>Tandai Selesai</span>
-                              </button>
-                            </>
-                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* =========================================================================
-            TAB 4: AUDIT AKUNTABILITAS PUBLIK & REKAP REAL-TIME
-            ========================================================================= */}
-        {activeTab === 'audit' && (
-          <div className="space-y-4">
-            <div className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-xs font-bold text-[#131b2e]">
-                    Audit Akuntabilitas Publik
-                  </h2>
-                  <p className="text-[11px] text-[#42474f] leading-snug mt-0.5">
-                    Rekam jejak penanganan nyata berdasarkan data database
-                  </p>
-                </div>
-                <span className="bg-[#a3f69c] text-[#002204] text-[10px] font-extrabold px-2.5 py-1 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#005713] animate-ping"></span>
-                  Live Log
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-[#f2f3ff] p-2 rounded-xl flex items-center justify-between text-[#00355f] font-bold text-[11px]">
-                  <span>{currentPeriodLabel}</span>
-                  <span className="material-symbols-outlined text-[16px]">
-                    calendar_month
-                  </span>
-                </div>
-                <div className="bg-[#f2f3ff] p-2 rounded-xl flex items-center justify-between text-[#00355f] font-bold text-[11px]">
-                  <span>
-                    {selectedDistrict === 'ALL'
-                      ? 'Seluruh Kebumen'
-                      : `Kec. ${selectedDistrict}`}
-                  </span>
-                  <span className="material-symbols-outlined text-[16px]">location_on</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="py-2.5 bg-[#00355f] text-white rounded-xl text-xs font-bold hover:bg-[#006496] flex items-center justify-center gap-1.5 shadow-xs"
-                >
-                  <span className="material-symbols-outlined text-[16px]">print</span>
-                  <span>Cetak / PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportCsv}
-                  className="py-2.5 bg-[#eaedff] text-[#00355f] rounded-xl text-xs font-bold hover:bg-[#dae2fd] flex items-center justify-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">table_chart</span>
-                  <span>Ekspor CSV</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Real Metrics */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs space-y-1">
-                <span className="bg-[#a3f69c] text-[#002204] text-[10px] font-bold px-2 py-0.5 rounded">
-                  Penyelesaian
-                </span>
-                <div className="text-xl font-black text-[#131b2e] pt-1">
-                  {completionPct}%
-                </div>
-                <div className="text-[11px] font-bold text-[#131b2e]">
-                  Rasio Tiket Tuntas
-                </div>
-                <div className="text-[10px] text-[#42474f]">
-                  {completedCount} dari {filteredReports.length} laporan selesai
-                </div>
-              </div>
-
-              <div className="bg-white p-3 rounded-2xl border border-[#eaedff] shadow-xs space-y-1">
-                <span className="bg-[#cce5ff] text-[#00517b] text-[10px] font-bold px-2 py-0.5 rounded">
-                  Indeks SAW
-                </span>
-                <div className="text-xl font-black text-[#006496] pt-1 font-mono">
-                  {avgSaw}
-                </div>
-                <div className="text-[11px] font-bold text-[#131b2e]">
-                  Rata-rata Skor SAW
-                </div>
-                <div className="text-[10px] text-[#42474f]">
-                  {criticalCount} laporan kategori kritis
-                </div>
-              </div>
-            </div>
-
-            {/* Real-Time Audit Trail */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-xs font-bold text-[#131b2e]">
-                <span>Jejak Audit Aktivitas Nyata</span>
-                <span className="text-[#006496]">{auditLogs.length} Aktivitas</span>
-              </div>
-
-              {auditLogs.length === 0 ? (
-                <div className="bg-white p-5 rounded-2xl border border-[#eaedff] text-center text-xs text-[#42474f]">
-                  Belum ada log aktivitas tercatat di database.
-                </div>
-              ) : (
-                <div className="space-y-2 text-xs">
-                  {auditLogs.slice(0, 10).map(log => (
-                    <div
-                      key={log.id}
-                      className="bg-white p-3 rounded-xl border border-[#eaedff] space-y-1"
-                    >
-                      <div className="flex justify-between items-center text-[10px]">
-                        <span className="text-[#42474f]">{log.time}</span>
-                        <span className="bg-[#eaedff] text-[#00355f] font-mono font-bold px-2 py-0.5 rounded">
-                          {log.reportId} • SAW {log.saw.toFixed(3)}
-                        </span>
-                      </div>
-                      <h4 className="font-bold text-[#131b2e]">
-                        {log.stageTitle} — {log.title}
-                      </h4>
-                      <p className="text-[11px] text-[#42474f] leading-relaxed">
-                        {log.desc}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Real Completed Before-After Gallery */}
-            {filteredReports
-              .filter(r => r.status === 'completed')
-              .map(doneRep => (
-                <div
-                  key={doneRep.id}
-                  className="bg-white p-3.5 rounded-2xl border border-[#eaedff] shadow-xs space-y-2.5"
-                >
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-[#131b2e]">
-                      Arsip Verifikasi Selesai
-                    </span>
-                    <span className="font-mono font-bold text-[#005713]">
-                      {doneRep.id}
-                    </span>
-                  </div>
-                  <h4 className="text-xs font-bold text-[#131b2e]">{doneRep.title}</h4>
-
-                  {(doneRep.photoBefore || doneRep.photoAfter) && (
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="relative rounded-xl overflow-hidden h-28 bg-[#f2f3ff] flex items-center justify-center">
-                        {doneRep.photoBefore ? (
-                          <img
-                            src={doneRep.photoBefore}
-                            alt="Sebelum"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-[10px] text-[#727780]">Tanpa foto awal</span>
-                        )}
-                        <span className="absolute top-1.5 left-1.5 bg-[#ba1a1a] text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
-                          Sebelum
-                        </span>
-                      </div>
-                      <div className="relative rounded-xl overflow-hidden h-28 bg-[#f2f3ff] flex items-center justify-center">
-                        {doneRep.photoAfter ? (
-                          <img
-                            src={doneRep.photoAfter}
-                            alt="Sesudah"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-[10px] text-[#727780]">
-                            Terverifikasi selesai
-                          </span>
-                        )}
-                        <span className="absolute top-1.5 right-1.5 bg-[#005713] text-[#a3f69c] text-[9px] font-bold px-1.5 py-0.5 rounded">
-                          Sesudah
-                        </span>
-                      </div>
+                      ))}
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center text-[10px] pt-1 border-t border-[#eaedff]">
-                    <span className="text-[#005713] font-bold">
-                      {doneRep.verifiedBy || 'Terverifikasi Dinas PUPR'}
-                    </span>
-                    <span className="text-[#42474f]">{doneRep.completedAt}</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExportCsv}
+                    className="w-full h-10 px-4 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Unduh Titik Koordinat GPS (CSV)</span>
+                  </button>
                 </div>
-              ))}
-          </div>
-        )}
-      </main>
+              </div>
+            </div>
+          )}
 
-      {/* Admin Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-xl border-t border-[#eaedff] pb-safe shadow-lg max-w-md mx-auto">
-        <div className="grid grid-cols-4 items-center h-16 px-1">
-          {[
-            { id: 'dashboard', label: 'Dashboard', icon: 'grid_view' },
-            { id: 'peta', label: 'Peta & Klaster', icon: 'map' },
-            { id: 'tugas', label: 'Tugas', icon: 'assignment' },
-            { id: 'audit', label: 'Audit & Laporan', icon: 'verified_user' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex flex-col items-center justify-center gap-0.5 h-full transition-colors ${
-                activeTab === tab.id
-                  ? 'text-[#00355f] font-bold'
-                  : 'text-[#727780] hover:text-[#00355f]'
-              }`}
-            >
-              <span
-                className={`material-symbols-outlined text-[22px] ${
-                  activeTab === tab.id ? 'fill-1' : ''
+          {/* =====================================================================
+              TAB 3: TUGAS OPERASIONAL LAPANGAN & DISPOSISI SPK
+              ===================================================================== */}
+          {activeTab === 'tugas' && (
+            <div className="space-y-5">
+              {/* Filter Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-4">
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-slate-900">
+                    Daftar Tugas Lapangan & Surat Perintah Kerja (SPK)
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Pantau penugasan regu TRC PUPR, perbarui persentase pengerjaan, dan selesaikan tiket
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto self-start sm:self-auto max-w-full">
+                  {[
+                    { id: 'all', label: `Semua (${filteredReports.length})` },
+                    { id: 'submitted', label: `Menunggu (${needVerification})` },
+                    { id: 'in_progress', label: `SPK Aktif (${inProgressCount})` },
+                    { id: 'completed', label: `Selesai (${completedCount})` },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setTaskFilter(f.id as any)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 tabular-nums ${
+                        taskFilter === f.id
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredTasks.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-10 text-center space-y-2">
+                  <ClipboardCheck className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-900">
+                    Belum Ada Tugas pada Filter Ini
+                  </p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Setiap laporan warga yang masuk dapat langsung diverifikasi, diterbitkan SPK, dan
+                    dipantau progres pengerjaannya di halaman ini.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* DESKTOP HIGH-DENSITY DATA TABLE (lg and up) */}
+                  <div className="hidden lg:block bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold text-slate-600">
+                            <th className="py-3 px-4">Tiket & Lokasi</th>
+                            <th className="py-3 px-4">Kecamatan</th>
+                            <th className="py-3 px-4 text-right">Skor SAW</th>
+                            <th className="py-3 px-4">Regu Pelaksana / SPK</th>
+                            <th className="py-3 px-4 w-52">Progres Lapangan</th>
+                            <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4 text-right">Tindakan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 text-xs">
+                          {filteredTasks.map(task => {
+                            const pct =
+                              task.status === 'completed'
+                                ? 100
+                                : task.assignedTeam?.progressPercent ||
+                                  (task.status === 'in_progress'
+                                    ? 50
+                                    : task.status === 'verified'
+                                    ? 25
+                                    : 0);
+
+                            return (
+                              <tr
+                                key={task.id}
+                                className="hover:bg-slate-50/80 transition-colors align-middle"
+                              >
+                                <td className="py-3.5 px-4 max-w-xs">
+                                  <div className="font-mono tabular-nums font-bold text-[#00355f]">
+                                    {task.id}
+                                    <span className="font-sans font-normal text-slate-400">
+                                      {' '}
+                                      · {task.createdAt}
+                                    </span>
+                                  </div>
+                                  <div className="font-semibold text-slate-900 truncate mt-0.5">
+                                    {task.title}
+                                  </div>
+                                  <div className="text-slate-500 truncate">{task.address}</div>
+                                </td>
+
+                                <td className="py-3.5 px-4 font-medium text-slate-700 whitespace-nowrap">
+                                  Kec. {task.district}
+                                </td>
+
+                                <td className="py-3.5 px-4 text-right font-mono tabular-nums">
+                                  <span
+                                    className={`font-bold ${
+                                      task.sawScores.totalSaw >= 0.85
+                                        ? 'text-red-700'
+                                        : 'text-slate-900'
+                                    }`}
+                                  >
+                                    {task.sawScores.totalSaw.toFixed(3)}
+                                  </span>
+                                  <span className="block text-[11px] text-slate-400">
+                                    Rank #{task.sawScores.rank || 1}
+                                  </span>
+                                </td>
+
+                                <td className="py-3.5 px-4 max-w-[220px]">
+                                  {task.assignedTeam ? (
+                                    <div>
+                                      <div className="font-mono tabular-nums text-[11px] font-semibold text-[#00355f]">
+                                        {task.spkNumber || 'SPK Aktif'}
+                                      </div>
+                                      <div className="font-medium text-slate-800 truncate">
+                                        {task.assignedTeam.name}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400">Belum ditugaskan</span>
+                                  )}
+                                </td>
+
+                                <td className="py-3.5 px-4">
+                                  <div className="space-y-1.5">
+                                    <div className="flex justify-between font-mono tabular-nums text-[11px]">
+                                      <span className="text-slate-500">Realisasi</span>
+                                      <span className="font-bold text-slate-900">{pct}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full transition-all duration-200 ${
+                                          task.status === 'completed'
+                                            ? 'bg-emerald-600'
+                                            : 'bg-[#00355f]'
+                                        }`}
+                                        style={{ width: `${pct}%` }}
+                                      />
+                                    </div>
+                                    {task.status === 'in_progress' && (
+                                      <div className="flex items-center gap-1 pt-0.5">
+                                        {[25, 50, 75].map(step => (
+                                          <button
+                                            key={step}
+                                            type="button"
+                                            onClick={() => handleUpdateProgress(task, step)}
+                                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums font-semibold border ${
+                                              pct === step
+                                                ? 'bg-[#00355f] text-white border-[#00355f]'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                          >
+                                            {step}%
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  <StatusInline status={task.status} label={task.statusLabel} />
+                                </td>
+
+                                <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                  <div className="inline-flex items-center justify-end gap-1.5">
+                                    {task.status === 'submitted' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleVerifyReport(task)}
+                                        className="h-8 px-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-800 font-semibold whitespace-nowrap"
+                                      >
+                                        Validasi
+                                      </button>
+                                    )}
+
+                                    {task.status !== 'in_progress' &&
+                                      task.status !== 'completed' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDispatchSpk(task)}
+                                          className="h-8 px-3 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white font-semibold whitespace-nowrap"
+                                        >
+                                          Terbitkan SPK
+                                        </button>
+                                      )}
+
+                                    {task.status === 'in_progress' && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            openTicketInspector(task.id, false);
+                                            setActiveTab('dashboard');
+                                          }}
+                                          className="h-8 px-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-800 font-semibold whitespace-nowrap"
+                                        >
+                                          Foto & Detail
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCompleteReport(task)}
+                                          className="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold whitespace-nowrap"
+                                        >
+                                          Selesai
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* MOBILE & TABLET RESPONSIVE CARD GRID (< lg) */}
+                  <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredTasks.map(task => {
+                      const pct =
+                        task.status === 'completed'
+                          ? 100
+                          : task.assignedTeam?.progressPercent ||
+                            (task.status === 'in_progress'
+                              ? 50
+                              : task.status === 'verified'
+                              ? 25
+                              : 0);
+
+                      return (
+                        <div
+                          key={task.id}
+                          className="bg-white border border-slate-200 rounded-xl p-4 space-y-3.5 flex flex-col justify-between"
+                        >
+                          <div className="space-y-2.5">
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <span className="font-mono tabular-nums font-bold text-[#00355f]">
+                                {task.spkNumber || task.id} · SAW {task.sawScores.totalSaw.toFixed(3)}
+                              </span>
+                              <StatusInline status={task.status} label={task.statusLabel} />
+                            </div>
+
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                                {task.title}
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Kec. {task.district} · {task.address}
+                              </p>
+                            </div>
+
+                            {task.assignedTeam && (
+                              <div className="text-xs text-slate-600 pt-1 border-t border-slate-100">
+                                <span className="font-semibold text-slate-800 block truncate">
+                                  {task.assignedTeam.name}
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  {task.assignedTeam.leadOfficer} · {task.assignedTeam.vehicle}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Progress */}
+                            <div className="space-y-1.5 pt-1">
+                              <div className="flex justify-between text-xs font-mono tabular-nums">
+                                <span className="font-sans text-slate-600 font-medium">
+                                  Progres Penanganan
+                                </span>
+                                <span className="font-bold text-slate-900">{pct}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-200 ${
+                                    task.status === 'completed' ? 'bg-emerald-600' : 'bg-[#00355f]'
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+
+                              {task.status === 'in_progress' && (
+                                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                                  {[25, 50, 75].map(stepPct => (
+                                    <button
+                                      key={stepPct}
+                                      type="button"
+                                      onClick={() => handleUpdateProgress(task, stepPct)}
+                                      className={`h-8 rounded-lg text-xs font-mono tabular-nums font-semibold border ${
+                                        pct === stepPct
+                                          ? 'bg-[#00355f] text-white border-[#00355f]'
+                                          : 'bg-slate-50 text-slate-700 border-slate-200'
+                                      }`}
+                                    >
+                                      {stepPct}%
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {task.status !== 'completed' && (
+                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                              {task.status === 'submitted' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleVerifyReport(task)}
+                                  className="h-10 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                                >
+                                  <FileCheck2 className="w-3.5 h-3.5" />
+                                  <span>Validasi</span>
+                                </button>
+                              )}
+
+                              {task.status !== 'in_progress' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDispatchSpk(task)}
+                                  className={`h-10 px-3 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                                    task.status === 'verified' ? 'col-span-2' : 'col-span-1'
+                                  }`}
+                                >
+                                  <Wrench className="w-3.5 h-3.5" />
+                                  <span>Terbitkan SPK</span>
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openTicketInspector(task.id, true)}
+                                    className="h-10 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                                  >
+                                    <ImagePlus className="w-3.5 h-3.5" />
+                                    <span>Unggah Foto</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCompleteReport(task)}
+                                    className="h-10 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Selesaikan</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* =====================================================================
+              TAB 4: AUDIT AKUNTABILITAS PUBLIK & REKAP REAL-TIME
+              ===================================================================== */}
+          {activeTab === 'audit' && (
+            <div className="space-y-6">
+              {/* Executive Print & Summary Header */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-[#005187]">
+                    Rekapitulasi Akuntabilitas Penanganan · {currentPeriodLabel}
+                  </p>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                    Log Audit & Dokumentasi Penyelesaian Dinas PUPR Kebumen
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Wilayah:{' '}
+                    {selectedDistrict === 'ALL'
+                      ? 'Seluruh Kecamatan Kabupaten Kebumen'
+                      : `Kecamatan ${selectedDistrict}`}{' '}
+                    · Sumber data tersinkronisasi dari pelaporan warga
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0 print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="h-10 px-4 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Cetak / PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportCsv}
+                    className="h-10 px-4 rounded-lg bg-[#00355f] hover:bg-[#004880] text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Unduh CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Audit Summary Metrics */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-1">
+                  <span className="text-xs text-slate-500">Rasio Penyelesaian</span>
+                  <p className="text-2xl font-bold text-emerald-700 font-mono tabular-nums">
+                    {completionPct}%
+                  </p>
+                  <p className="text-xs text-slate-500 tabular-nums">
+                    {completedCount} dari {filteredReports.length} tiket selesai
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-1">
+                  <span className="text-xs text-slate-500">Indeks Rata-Rata SAW</span>
+                  <p className="text-2xl font-bold text-[#00355f] font-mono tabular-nums">
+                    {avgSaw}
+                  </p>
+                  <p className="text-xs text-slate-500 tabular-nums">
+                    {criticalCount} laporan kategori kritis
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-1">
+                  <span className="text-xs text-slate-500">Jejak Aktivitas</span>
+                  <p className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
+                    {auditLogs.length}
+                  </p>
+                  <p className="text-xs text-slate-500">Tahapan linimasa terekam</p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-1">
+                  <span className="text-xs text-slate-500">Cakupan Kecamatan</span>
+                  <p className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
+                    {availableDistricts.length}
+                  </p>
+                  <p className="text-xs text-slate-500">Kecamatan dengan laporan</p>
+                </div>
+              </div>
+
+              {/* 2-Column Split: Audit Trail Feed + Completed Before/After Archive */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Chronological Audit Trail */}
+                <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Riwayat Jejak Audit Penanganan
+                    </h3>
+                    <span className="text-xs font-mono tabular-nums text-slate-500">
+                      {auditLogs.length} entri
+                    </span>
+                  </div>
+
+                  {auditLogs.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-500">
+                      Belum ada jejak aktivitas tercatat pada database.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-200">
+                      {auditLogs.slice(0, 20).map(log => (
+                        <div key={log.id} className="p-4 sm:px-5 space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                            <span className="font-mono tabular-nums font-semibold text-[#00355f]">
+                              {log.reportId} · Kec. {log.district} · SAW {log.saw.toFixed(3)}
+                            </span>
+                            <span className="tabular-nums">{log.time}</span>
+                          </div>
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                            {log.stageTitle} — {log.title}
+                          </h4>
+                          <p className="text-xs text-slate-600 leading-relaxed">{log.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Public Before-After Verification Archive */}
+                <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Arsip Dokumentasi Selesai
+                    </h3>
+                    <span className="text-xs font-mono tabular-nums text-emerald-700 font-semibold">
+                      {completedCount} tuntas
+                    </span>
+                  </div>
+
+                  {completedCount === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-500 leading-relaxed">
+                      Tiket yang telah ditandai selesai beserta foto sebelum dan sesudah perbaikan
+                      akan tampil di arsip transparansi ini.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-200">
+                      {filteredReports
+                        .filter(r => r.status === 'completed')
+                        .map(doneRep => (
+                          <div key={doneRep.id} className="p-4 sm:p-5 space-y-3">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-mono tabular-nums font-bold text-emerald-700">
+                                {doneRep.id}
+                              </span>
+                              <span className="text-slate-500 tabular-nums">
+                                {doneRep.completedAt}
+                              </span>
+                            </div>
+
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-900">{doneRep.title}</h4>
+                              <p className="text-xs text-slate-500">
+                                Kec. {doneRep.district} · {doneRep.placeName}
+                              </p>
+                            </div>
+
+                            {(doneRep.photoBefore || doneRep.photoAfter) && (
+                              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                                <div className="space-y-1">
+                                  <span className="text-[11px] text-slate-500 block">Sebelum</span>
+                                  <div className="h-28 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
+                                    {doneRep.photoBefore ? (
+                                      <img
+                                        src={doneRep.photoBefore}
+                                        alt={`Sebelum perbaikan ${doneRep.title}`}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400">
+                                        Tanpa foto awal
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <span className="text-[11px] text-emerald-700 font-medium block">
+                                    Sesudah
+                                  </span>
+                                  <div className="h-28 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
+                                    {doneRep.photoAfter ? (
+                                      <img
+                                        src={doneRep.photoAfter}
+                                        alt={`Sesudah perbaikan ${doneRep.title}`}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <span className="text-[11px] text-slate-500 px-2 text-center">
+                                        Terverifikasi selesai
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* =========================================================================
+          MOBILE & TABLET BOTTOM NAVIGATION BAR (< lg, compact 56px height)
+          ========================================================================= */}
+      <nav
+        aria-label="Navigasi Bawah Admin"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 pb-safe print:hidden"
+      >
+        <div className="grid grid-cols-4 h-14 max-w-2xl mx-auto px-2">
+          {navItems.map(item => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center justify-center gap-1 transition-colors whitespace-nowrap ${
+                  isActive ? 'text-[#00355f] font-bold' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                {tab.icon}
-              </span>
-              <span className="text-[10px] tracking-tight">{tab.label}</span>
-            </button>
-          ))}
+                <Icon className="w-4 h-4" />
+                <span className="text-[11px] leading-none">{item.shortLabel}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>

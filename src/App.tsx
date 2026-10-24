@@ -270,9 +270,9 @@ export default function App() {
         </div>
       )}
 
-      {/* PORTAL 2: ADMIN DINAS PUPR PORTAL */}
+      {/* PORTAL 2: ADMIN DINAS PUPR PORTAL (FULL RESPONSIVE WORKSPACE) */}
       {currentPortal === 'admin' && (
-        <div className="w-full max-w-md bg-[#faf8ff] min-h-[calc(100vh-32px)] flex flex-col relative mx-auto shadow-2xl border-x border-[#eaedff]">
+        <div className="w-full flex-1 flex flex-col bg-slate-50 min-h-[calc(100vh-36px)]">
           {!isAdminLoggedIn ? (
             <AdminLogin
               onLoginSuccess={handleAdminLoginSuccess}
