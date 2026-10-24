@@ -8,7 +8,13 @@ import {
   searchPlacesHybrid,
 } from '../utils/placeSearch';
 import { getOrCreateDeviceId } from '../services/reportService';
-import { calculateRawCriteria, computeSawScore } from '../utils/sawCalculator';
+import {
+  CATEGORY_CRITICAL_SUBTEXT,
+  CATEGORY_LABELS,
+  CATEGORY_OBSTACLE_OPTIONS,
+  calculateRawCriteria,
+  computeSawScore,
+} from '../utils/sawCalculator';
 import { DictationService, speakText } from '../utils/speechHelper';
 import { LeafletMapView } from './LeafletMapView';
 
@@ -75,9 +81,19 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const reverseGeoAbortRef = useRef<AbortController | null>(null);
 
   const [category, setCategory] = useState<FacilityCategory>('public_space');
-  const [obstacleType, setObstacleType] = useState('Trotoar rusak atau terhalang');
+  const [obstacleType, setObstacleType] = useState(
+    CATEGORY_OBSTACLE_OPTIONS.public_space[0].label
+  );
   const [severity, setSeverity] = useState<SeverityLevel>('severe');
   const [impactedGroups, setImpactedGroups] = useState<string[]>(['Penyandang disabilitas']);
+
+  const handleCategoryChange = (nextCategory: FacilityCategory) => {
+    setCategory(nextCategory);
+    const nextOptions = CATEGORY_OBSTACLE_OPTIONS[nextCategory] || [];
+    if (nextOptions.length > 0 && !nextOptions.some(opt => opt.label === obstacleType)) {
+      setObstacleType(nextOptions[0].label);
+    }
+  };
 
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
@@ -1040,7 +1056,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setCategory(opt.id as FacilityCategory)}
+                    onClick={() => handleCategoryChange(opt.id as FacilityCategory)}
                     className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
                       isSelected
                         ? 'bg-[#d2e4ff] text-[#001c37] border border-[#00355f]/20 font-bold'
@@ -1072,38 +1088,41 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </div>
           </div>
 
-          {/* Sub-bagian B: Jenis Hambatan */}
+          {/* Sub-bagian B: Jenis Hambatan (Dinamis Menyesuaikan Pilihan Kategori A) */}
           <div className="space-y-2 pt-1">
-            <label className="block text-[12px] font-bold text-[#131b2e]">
-              B. Jenis Hambatan Aksesibilitas <span className="text-[#ba1a1a]">*</span>
-            </label>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <label className="block text-[12px] font-bold text-[#131b2e]">
+                B. Jenis Hambatan Aksesibilitas <span className="text-[#ba1a1a]">*</span>
+              </label>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#f2f3ff] text-[#006496]">
+                {CATEGORY_LABELS[category]}
+              </span>
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {[
-                'Trotoar rusak atau terhalang',
-                'Guiding block terputus',
-                'Tidak ada ramp / ramp terlalu curam',
-                'Lubang drainase / manhole terbuka',
-                'Akses kursi roda terblokir',
-              ].map(item => {
-                const isSelected = obstacleType === item;
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setObstacleType(item)}
-                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
-                      isSelected
-                        ? 'bg-[#00355f] text-white shadow-xs'
-                        : 'bg-[#eaedff] text-[#131b2e] hover:bg-[#dae2fd]'
-                    }`}
-                  >
-                    {isSelected && (
-                      <span className="material-symbols-outlined text-[14px]">check</span>
-                    )}
-                    <span>{item}</span>
-                  </button>
-                );
-              })}
+              {(CATEGORY_OBSTACLE_OPTIONS[category] || CATEGORY_OBSTACLE_OPTIONS.public_space).map(
+                opt => {
+                  const isSelected = obstacleType === opt.label;
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setObstacleType(opt.label)}
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all text-left ${
+                        isSelected
+                          ? 'bg-[#00355f] text-white shadow-xs'
+                          : 'bg-[#eaedff] text-[#131b2e] hover:bg-[#dae2fd]'
+                      }`}
+                    >
+                      {isSelected && (
+                        <span className="material-symbols-outlined text-[14px] shrink-0">
+                          check
+                        </span>
+                      )}
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                }
+              )}
             </div>
           </div>
 
@@ -1118,25 +1137,25 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                   id: 'mild',
                   label: 'Ringan, masih mudah dilewati',
                   dotColor: 'bg-[#a3f69c]',
-                  sub: 'Bisa dilalui mandiri dengan kehati-hatian',
+                  sub: 'Bisa dilalui mandiri dengan sedikit kehati-hatian',
                 },
                 {
                   id: 'moderate',
                   label: 'Sedang, cukup mengganggu',
                   dotColor: 'bg-[#7fc5fd]',
-                  sub: 'Memperlambat mobilitas pejalan kaki & lansia',
+                  sub: 'Memperlambat mobilitas pejalan kaki, difabel & lansia',
                 },
                 {
                   id: 'severe',
                   label: 'Berat, sulit dilewati',
                   dotColor: 'bg-[#ffdad6]',
-                  sub: 'Membutuhkan bantuan orang lain untuk melintas',
+                  sub: 'Membutuhkan bantuan orang lain untuk dapat melintas',
                 },
                 {
                   id: 'critical',
                   label: 'Sangat berat atau membahayakan keselamatan',
                   dotColor: 'bg-[#ba1a1a]',
-                  sub: 'Risiko jatuh ke jalan raya / lubang terbuka',
+                  sub: CATEGORY_CRITICAL_SUBTEXT[category],
                 },
               ].map(lvl => {
                 const isSelected = severity === lvl.id;
