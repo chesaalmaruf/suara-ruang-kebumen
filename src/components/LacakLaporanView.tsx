@@ -6,29 +6,53 @@ interface LacakLaporanViewProps {
   reports: ReportItem[];
   initialSearchId?: string;
   onNavigateToLaporWithLocation?: (loc: string) => void;
+  onRefreshStatus?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
   reports,
   initialSearchId = '',
   onNavigateToLaporWithLocation,
+  onRefreshStatus,
+  isRefreshing = false,
 }) => {
-  const [searchQuery, setSearchQuery] = useState(initialSearchId || reports[0]?.id || '');
-  const [selectedReportId, setSelectedReportId] = useState(
-    initialSearchId || reports[0]?.id || ''
-  );
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (initialSearchId && reports.some(r => r.id === initialSearchId)) {
+      return initialSearchId;
+    }
+    return reports[0]?.id || '';
+  });
+  const [selectedReportId, setSelectedReportId] = useState(() => {
+    if (initialSearchId && reports.some(r => r.id === initialSearchId)) {
+      return initialSearchId;
+    }
+    return reports[0]?.id || '';
+  });
   const [searchNotFound, setSearchNotFound] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
   const [showSawDetails, setShowSawDetails] = useState(false);
 
   useEffect(() => {
-    if (initialSearchId) {
+    if (reports.length === 0) {
+      setSelectedReportId('');
+      setSearchQuery('');
+      return;
+    }
+
+    if (initialSearchId && reports.some(r => r.id === initialSearchId)) {
       setSearchQuery(initialSearchId);
       setSelectedReportId(initialSearchId);
       setSearchNotFound(false);
-    } else if (!selectedReportId && reports.length > 0) {
-      setSearchQuery(reports[0].id);
+      return;
+    }
+
+    const stillExists = reports.some(
+      r => r.id.toLowerCase() === selectedReportId.toLowerCase()
+    );
+    if (!stillExists) {
       setSelectedReportId(reports[0].id);
+      setSearchQuery(reports[0].id);
     }
   }, [initialSearchId, reports]);
 
@@ -87,13 +111,13 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
     return (
       <div className="flex flex-col items-center justify-center px-6 py-16 text-center max-w-md mx-auto space-y-4">
         <div className="w-16 h-16 rounded-2xl bg-[#eaedff] text-[#00355f] flex items-center justify-center">
-          <span className="material-symbols-outlined text-[32px]">fact_check</span>
+          <span className="material-symbols-outlined text-[32px]">smartphone</span>
         </div>
         <h2 className="text-[17px] font-extrabold text-[#131b2e]">
-          Belum Ada Tiket Laporan
+          Belum Ada Aktivitas Laporan di Perangkat Ini
         </h2>
         <p className="text-[12px] text-[#42474f] leading-relaxed">
-          Saat ini belum ada laporan aksesibilitas yang tercatat di database. Silakan buat laporan baru terlebih dahulu untuk melacak progres penanganan Dinas PUPR secara real-time.
+          Riwayat pelacakan disimpan khusus pada perangkat tempat Anda mengirim laporan agar aktivitas Anda tidak muncul di perangkat pengguna lain. Silakan kirim laporan dari perangkat ini untuk memantau progres penanganan Dinas PUPR secara real-time.
         </p>
         <button
           type="button"
@@ -101,7 +125,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
           className="px-5 py-3 rounded-xl bg-[#00355f] hover:bg-[#006496] text-white text-xs font-bold flex items-center gap-2 shadow-sm"
         >
           <span className="material-symbols-outlined text-[18px]">add_a_photo</span>
-          <span>Buat Laporan Pertama</span>
+          <span>Buat Laporan di Perangkat Ini</span>
         </button>
       </div>
     );
@@ -122,17 +146,38 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
 
       {/* Section 1: Search & Tracking Bar */}
       <section className="bg-white p-3.5 rounded-2xl shadow-xs border border-[#eaedff] flex flex-col gap-2.5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <label
             htmlFor="ticket-search"
-            className="text-[12px] font-bold text-[#131b2e]"
+            className="text-[12px] font-bold text-[#131b2e] flex items-center gap-1.5"
           >
-            Lacak Laporan Anda
+            <span>Laporan Perangkat Ini</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-[#eaedff] text-[#00355f] text-[10px] font-mono">
+              {reports.length}
+            </span>
           </label>
-          <span className="inline-flex items-center gap-1 text-[#006496] text-[11px] font-bold">
-            <span className="material-symbols-outlined text-[15px]">verified</span>
-            Data Terintegrasi PUPR
-          </span>
+          {onRefreshStatus ? (
+            <button
+              type="button"
+              onClick={onRefreshStatus}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1 text-[#006496] hover:text-[#00355f] text-[11px] font-bold disabled:opacity-60"
+            >
+              <span
+                className={`material-symbols-outlined text-[15px] ${
+                  isRefreshing ? 'animate-spin' : ''
+                }`}
+              >
+                refresh
+              </span>
+              <span>{isRefreshing ? 'Memuat...' : 'Perbarui Status'}</span>
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[#006496] text-[11px] font-bold">
+              <span className="material-symbols-outlined text-[15px]">verified</span>
+              Tersimpan di Perangkat
+            </span>
+          )}
         </div>
 
         <form

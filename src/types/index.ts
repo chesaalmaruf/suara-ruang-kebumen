@@ -71,4 +71,6 @@ export interface ReportItem {
   verifiedBy?: string;
   verifiedAt?: string;
   completedAt?: string;
+  reporterDeviceId?: string;
+  localSavedAt?: number;
 }

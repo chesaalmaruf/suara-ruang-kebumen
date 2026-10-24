@@ -5,18 +5,30 @@ import { LeafletMapView } from './LeafletMapView';
 
 interface BerandaViewProps {
   reports: ReportItem[];
+  myReportIds?: string[];
   onNavigateToLapor: () => void;
   onNavigateToLacak: (reportId?: string) => void;
 }
 
 export const BerandaView: React.FC<BerandaViewProps> = ({
   reports,
+  myReportIds = [],
   onNavigateToLapor,
   onNavigateToLacak,
 }) => {
   const [selectedFilter, setSelectedFilter] = useState<
     'all' | 'critical' | 'in_progress' | 'completed'
   >('all');
+  const [publicPreviewReport, setPublicPreviewReport] = useState<ReportItem | null>(null);
+
+  const handleOpenReportItem = (reportId: string) => {
+    if (myReportIds.includes(reportId)) {
+      onNavigateToLacak(reportId);
+      return;
+    }
+    const target = reports.find(r => r.id === reportId) || null;
+    setPublicPreviewReport(target);
+  };
 
   const completedReport = useMemo(
     () => reports.find(r => r.status === 'completed') || null,
@@ -92,7 +104,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
         {/* Map Canvas Container with Live Area Tracking */}
         <LeafletMapView
           reports={reports}
-          onSelectReport={reportId => onNavigateToLacak(reportId)}
+          onSelectReport={reportId => handleOpenReportItem(reportId)}
           heightClass="h-72"
           geofenceRadiusMeters={20}
         />
@@ -311,7 +323,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               <button
                 key={rep.id}
                 type="button"
-                onClick={() => onNavigateToLacak(rep.id)}
+                onClick={() => handleOpenReportItem(rep.id)}
                 className="w-full text-left bg-white p-3.5 rounded-2xl border border-[#eaedff] hover:border-[#006496] shadow-xs transition-all space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -362,10 +374,10 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               </h2>
             </div>
             <button
-              onClick={() => onNavigateToLacak(completedReport.id)}
+              onClick={() => handleOpenReportItem(completedReport.id)}
               className="text-[12px] text-[#006496] font-bold hover:underline"
             >
-              Lihat Tiket
+              Lihat Detail
             </button>
           </div>
 
@@ -427,7 +439,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
                   Skor Prioritas: {toScore100(completedReport.sawScores.totalSaw)}/100 (Tuntas)
                 </span>
                 <button
-                  onClick={() => onNavigateToLacak(completedReport.id)}
+                  onClick={() => handleOpenReportItem(completedReport.id)}
                   className="font-bold hover:underline flex items-center gap-0.5"
                 >
                   <span>Detail Riwayat</span>
@@ -437,6 +449,71 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
             </div>
           </div>
         </section>
+      )}
+
+      {/* Ringkasan Informasi Laporan Publik (tanpa masuk ke Riwayat Lacak Perangkat) */}
+      {publicPreviewReport && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setPublicPreviewReport(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-4 space-y-3 shadow-2xl border border-[#eaedff] max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono font-bold text-[#00355f] bg-[#eaedff] px-2 py-0.5 rounded">
+                    {publicPreviewReport.id}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#d2e4ff] text-[#00355f]">
+                    {publicPreviewReport.statusLabel}
+                  </span>
+                </div>
+                <h3 className="text-[15px] font-extrabold text-[#131b2e] pt-1 leading-snug">
+                  {publicPreviewReport.title}
+                </h3>
+                <p className="text-[11px] text-[#42474f]">
+                  Kec. {publicPreviewReport.district} • {publicPreviewReport.address}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPublicPreviewReport(null)}
+                aria-label="Tutup detail"
+                className="w-8 h-8 rounded-full bg-[#f2f3ff] hover:bg-[#eaedff] text-[#131b2e] flex items-center justify-center shrink-0"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {publicPreviewReport.photoBefore && (
+              <div className="rounded-xl overflow-hidden h-40 bg-[#f2f3ff] border border-[#eaedff]">
+                <img
+                  src={publicPreviewReport.photoAfter || publicPreviewReport.photoBefore}
+                  alt={publicPreviewReport.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+
+            {publicPreviewReport.description && (
+              <p className="text-[12px] text-[#42474f] bg-[#f2f3ff] p-3 rounded-xl leading-relaxed">
+                {publicPreviewReport.description}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#f2f3ff]">
+              <span className="text-[#42474f]">
+                Dilaporkan: {publicPreviewReport.createdAt}
+              </span>
+              <span className="font-mono font-bold text-[#00355f]">
+                Skor Prioritas {toScore100(publicPreviewReport.sawScores.totalSaw)}/100
+              </span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

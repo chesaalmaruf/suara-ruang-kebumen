@@ -7,6 +7,7 @@ import {
   searchLocalKebumenPlaces,
   searchPlacesHybrid,
 } from '../utils/placeSearch';
+import { getOrCreateDeviceId } from '../services/reportService';
 import { calculateRawCriteria, computeSawScore } from '../utils/sawCalculator';
 import { DictationService, speakText } from '../utils/speechHelper';
 import { LeafletMapView } from './LeafletMapView';
@@ -389,6 +390,8 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
       status: 'submitted',
       statusLabel: 'Menunggu Verifikasi DPUPR',
       createdAt: nowFormatted,
+      reporterDeviceId: getOrCreateDeviceId(),
+      localSavedAt: Date.now(),
       sawScores: {
         ...rawCriteria,
         totalSaw,

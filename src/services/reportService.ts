@@ -3,7 +3,10 @@ import { LEGACY_DUMMY_IDS } from '../data/initialData';
 import { rankReportsBySaw } from '../utils/sawCalculator';
 
 const OLD_STORAGE_KEY = 'suara_ruang_reports_kebumen_v2';
-export const STORAGE_KEY = 'suara_ruang_reports_clean_v3';
+const OLD_SHARED_CACHE_KEY = 'suara_ruang_reports_clean_v3';
+export const PUBLIC_CACHE_KEY = 'suara_ruang_public_reports_cache_v1';
+export const MY_DEVICE_REPORTS_KEY = 'suara_ruang_my_device_reports_v1';
+export const DEVICE_UID_KEY = 'suara_ruang_device_uid_v1';
 
 export interface DatabaseStatus {
   connected: boolean;
@@ -12,30 +15,155 @@ export interface DatabaseStatus {
   source: 'mongodb' | 'local';
 }
 
+/**
+ * Generates or retrieves a unique persistent identifier for this browser/device.
+ * Used so 'Lacak Laporan' only shows reports submitted from this specific device.
+ */
+export function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'server';
+  try {
+    let uid = localStorage.getItem(DEVICE_UID_KEY);
+    if (!uid) {
+      const randomPart =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      uid = `dev_${randomPart}`;
+      localStorage.setItem(DEVICE_UID_KEY, uid);
+    }
+    return uid;
+  } catch {
+    return 'dev_ephemeral';
+  }
+}
+
 function purgeOldDummyCache(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(OLD_STORAGE_KEY);
-    const current = localStorage.getItem(STORAGE_KEY);
-    if (current) {
-      const parsed = JSON.parse(current);
-      if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter(
-          (item: ReportItem) => item && !LEGACY_DUMMY_IDS.includes(item.id)
-        );
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
-        }
-      }
-    }
+    localStorage.removeItem(OLD_SHARED_CACHE_KEY);
   } catch {}
 }
 
 /**
- * Fetch all reports from /api/reports (MongoDB).
- * Supports empty arrays cleanly without falling back to dummy data.
+ * Reads reports strictly created on THIS device from LocalStorage,
+ * and enriches them with live status/SPK/timeline updates from MongoDB when available.
  */
-export async function fetchReports(): Promise<{ reports: ReportItem[]; dbStatus: DatabaseStatus }> {
+export function syncAndGetMyDeviceReports(
+  allServerReports?: ReportItem[],
+  syncedWithMongo = false
+): ReportItem[] {
+  if (typeof window === 'undefined') return [];
+
+  const myDeviceId = getOrCreateDeviceId();
+  let storedMyReports: ReportItem[] = [];
+
+  try {
+    const raw = localStorage.getItem(MY_DEVICE_REPORTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        storedMyReports = parsed.filter(
+          (r: ReportItem) => r && r.id && !LEGACY_DUMMY_IDS.includes(r.id)
+        );
+      }
+    }
+  } catch {}
+
+  if (!allServerReports) {
+    return storedMyReports;
+  }
+
+  const serverMap = new Map<string, ReportItem>();
+  for (const sr of allServerReports) {
+    if (sr && sr.id) {
+      serverMap.set(sr.id, sr);
+    }
+  }
+
+  const myIds = new Set(storedMyReports.map(r => r.id));
+
+  // Also include any server report explicitly tagged with this device's unique ID
+  for (const sr of allServerReports) {
+    if (sr.reporterDeviceId && sr.reporterDeviceId === myDeviceId && !myIds.has(sr.id)) {
+      storedMyReports.push(sr);
+      myIds.add(sr.id);
+    }
+  }
+
+  const now = Date.now();
+  const merged: ReportItem[] = [];
+
+  for (const localRep of storedMyReports) {
+    const liveServerRep = serverMap.get(localRep.id);
+    if (liveServerRep) {
+      // Merge latest Admin PUPR updates (status, timeline, SPK, photos, global rank)
+      merged.push({
+        ...localRep,
+        ...liveServerRep,
+        reporterDeviceId: localRep.reporterDeviceId || myDeviceId,
+        localSavedAt: localRep.localSavedAt,
+      });
+    } else {
+      // If connected to MongoDB and report is not on server (e.g. deleted by Admin),
+      // keep only if it was just created within the last 60 seconds (in-flight sync protection)
+      const recentlyCreated =
+        typeof localRep.localSavedAt === 'number' && now - localRep.localSavedAt < 60_000;
+      if (!syncedWithMongo || recentlyCreated) {
+        merged.push(localRep);
+      }
+    }
+  }
+
+  try {
+    localStorage.setItem(MY_DEVICE_REPORTS_KEY, JSON.stringify(merged));
+  } catch {}
+
+  return merged;
+}
+
+/**
+ * Registers a newly submitted report into this device's private LocalStorage history.
+ */
+export function saveReportToMyDevice(newReport: ReportItem): ReportItem[] {
+  if (typeof window === 'undefined') return [newReport];
+  const myDeviceId = getOrCreateDeviceId();
+  const enriched: ReportItem = {
+    ...newReport,
+    reporterDeviceId: newReport.reporterDeviceId || myDeviceId,
+    localSavedAt: newReport.localSavedAt || Date.now(),
+  };
+
+  try {
+    const existing = syncAndGetMyDeviceReports();
+    const updated = [enriched, ...existing.filter(r => r.id !== enriched.id)];
+    localStorage.setItem(MY_DEVICE_REPORTS_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [enriched];
+  }
+}
+
+/**
+ * Removes a report ID from this device's local history if deleted.
+ */
+export function removeReportFromMyDevice(id: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = syncAndGetMyDeviceReports();
+    const filtered = existing.filter(r => r.id !== id);
+    localStorage.setItem(MY_DEVICE_REPORTS_KEY, JSON.stringify(filtered));
+  } catch {}
+}
+
+/**
+ * Fetch all reports from /api/reports (MongoDB) for Admin Portal & Public Map.
+ */
+export async function fetchReports(): Promise<{
+  reports: ReportItem[];
+  myReports: ReportItem[];
+  dbStatus: DatabaseStatus;
+}> {
   purgeOldDummyCache();
 
   try {
@@ -53,14 +181,16 @@ export async function fetchReports(): Promise<{ reports: ReportItem[]; dbStatus:
         );
         const ranked = rankReportsBySaw(cleaned);
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(ranked));
+          localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(ranked));
         } catch {}
 
         const isMongo = result.source === 'mongodb';
         const isConnError = result.source === 'fallback_on_error';
+        const myReports = syncAndGetMyDeviceReports(ranked, isMongo);
 
         return {
           reports: ranked,
+          myReports,
           dbStatus: {
             connected: isMongo,
             status: isMongo ? 'connected' : isConnError ? 'error' : 'not_configured',
@@ -78,23 +208,26 @@ export async function fetchReports(): Promise<{ reports: ReportItem[]; dbStatus:
     console.warn('API /api/reports unavailable, loading from local cache:', err);
   }
 
-  // Fallback to local cache (clean, no dummy data)
-  let localReports: ReportItem[] = [];
+  // Fallback to local cache when offline
+  let localPublicReports: ReportItem[] = [];
   if (typeof window !== 'undefined') {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(PUBLIC_CACHE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          localReports = parsed.filter(r => r && !LEGACY_DUMMY_IDS.includes(r.id));
+          localPublicReports = parsed.filter(r => r && !LEGACY_DUMMY_IDS.includes(r.id));
         }
       }
     } catch {}
   }
 
-  const ranked = rankReportsBySaw(localReports);
+  const ranked = rankReportsBySaw(localPublicReports);
+  const myReports = syncAndGetMyDeviceReports(ranked, false);
+
   return {
     reports: ranked,
+    myReports,
     dbStatus: {
       connected: false,
       status: 'offline_fallback',
@@ -105,24 +238,33 @@ export async function fetchReports(): Promise<{ reports: ReportItem[]; dbStatus:
 }
 
 /**
- * Save a newly submitted citizen report to MongoDB & local cache
+ * Save a newly submitted citizen report to THIS device's history & MongoDB
  */
 export async function createReport(newReport: ReportItem): Promise<boolean> {
+  const myDeviceId = getOrCreateDeviceId();
+  const reportWithDevice: ReportItem = {
+    ...newReport,
+    reporterDeviceId: newReport.reporterDeviceId || myDeviceId,
+    localSavedAt: newReport.localSavedAt || Date.now(),
+  };
+
+  saveReportToMyDevice(reportWithDevice);
+
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(PUBLIC_CACHE_KEY);
     const existing: ReportItem[] = stored ? JSON.parse(stored) : [];
     const updated = rankReportsBySaw([
-      newReport,
-      ...existing.filter(r => r.id !== newReport.id),
+      reportWithDevice,
+      ...existing.filter(r => r.id !== reportWithDevice.id),
     ]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(updated));
   } catch {}
 
   try {
     const response = await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newReport),
+      body: JSON.stringify(reportWithDevice),
     });
 
     if (!response.ok) {
@@ -144,13 +286,24 @@ export async function updateReport(
   updates: Partial<ReportItem>
 ): Promise<boolean> {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(PUBLIC_CACHE_KEY);
     if (stored) {
       const list: ReportItem[] = JSON.parse(stored);
       const updated = rankReportsBySaw(
         list.map(r => (r.id === id ? { ...r, ...updates } : r))
       );
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(updated));
+    }
+  } catch {}
+
+  try {
+    const myStored = localStorage.getItem(MY_DEVICE_REPORTS_KEY);
+    if (myStored) {
+      const myList: ReportItem[] = JSON.parse(myStored);
+      if (myList.some(r => r.id === id)) {
+        const myUpdated = myList.map(r => (r.id === id ? { ...r, ...updates } : r));
+        localStorage.setItem(MY_DEVICE_REPORTS_KEY, JSON.stringify(myUpdated));
+      }
     }
   } catch {}
 
@@ -169,15 +322,17 @@ export async function updateReport(
 }
 
 /**
- * Delete a report from MongoDB & local cache
+ * Delete a report from MongoDB & local caches
  */
 export async function deleteReport(id: string): Promise<boolean> {
+  removeReportFromMyDevice(id);
+
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(PUBLIC_CACHE_KEY);
     if (stored) {
       const list: ReportItem[] = JSON.parse(stored);
       const filtered = rankReportsBySaw(list.filter(r => r.id !== id));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(filtered));
     }
   } catch {}
 

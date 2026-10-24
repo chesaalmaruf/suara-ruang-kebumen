@@ -16,7 +16,10 @@ import {
   updateReport,
   deleteReport,
   DatabaseStatus,
-  STORAGE_KEY,
+  PUBLIC_CACHE_KEY,
+  syncAndGetMyDeviceReports,
+  saveReportToMyDevice,
+  removeReportFromMyDevice,
 } from './services/reportService';
 
 const CONTRAST_KEY = 'suara_ruang_contrast_mode';
@@ -53,12 +56,13 @@ export default function App() {
   });
   const [isLoadingReports, setIsLoadingReports] = useState(false);
 
-  // Clean initial state (no dummy reports)
+  // Global reports for Admin Portal & Public Beranda Map
   const [reports, setReports] = useState<ReportItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem('suara_ruang_reports_kebumen_v2');
-        const stored = localStorage.getItem(STORAGE_KEY);
+        localStorage.removeItem('suara_ruang_reports_clean_v3');
+        const stored = localStorage.getItem(PUBLIC_CACHE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
@@ -75,11 +79,21 @@ export default function App() {
     return [];
   });
 
+  // Strictly per-device reports for Citizen 'Lacak Laporan' tab
+  const [myReports, setMyReports] = useState<ReportItem[]>(() =>
+    syncAndGetMyDeviceReports()
+  );
+
   const loadReportsFromServer = useCallback(async () => {
     setIsLoadingReports(true);
     try {
-      const { reports: fetchedReports, dbStatus: status } = await fetchReports();
+      const {
+        reports: fetchedReports,
+        myReports: deviceReports,
+        dbStatus: status,
+      } = await fetchReports();
       setReports(fetchedReports);
+      setMyReports(deviceReports);
       setDbStatus(status);
     } finally {
       setIsLoadingReports(false);
@@ -145,8 +159,11 @@ export default function App() {
     localStorage.removeItem(ADMIN_AUTH_KEY);
   };
 
-  // Citizen submits a new report -> saved to MongoDB & immediately available in Admin
+  // Citizen submits a new report -> saved to THIS device's history & MongoDB (for Admin)
   const handleAddNewReport = async (newReport: ReportItem) => {
+    const updatedDeviceReports = saveReportToMyDevice(newReport);
+    setMyReports(updatedDeviceReports);
+
     const updatedList = [newReport, ...reports.filter(r => r.id !== newReport.id)];
     const rankedList = rankReportsBySaw(updatedList);
     setReports(rankedList);
@@ -170,6 +187,11 @@ export default function App() {
     const updated = reports.map(r => (r.id === reportId ? { ...r, ...updates } : r));
     const ranked = rankReportsBySaw(updated);
     setReports(ranked);
+    setMyReports(prev =>
+      prev.some(r => r.id === reportId)
+        ? syncAndGetMyDeviceReports(ranked, dbStatus.connected)
+        : prev
+    );
 
     try {
       await updateReport(reportId, updates);
@@ -180,11 +202,13 @@ export default function App() {
 
   // Admin deletes a report
   const handleDeleteReport = async (reportId: string) => {
+    removeReportFromMyDevice(reportId);
     const filtered = reports.filter(r => r.id !== reportId);
     const ranked = rankReportsBySaw(filtered);
     setReports(ranked);
+    setMyReports(prev => prev.filter(r => r.id !== reportId));
     if (selectedReportId === reportId) {
-      setSelectedReportId(ranked[0]?.id || '');
+      setSelectedReportId('');
     }
 
     try {
@@ -209,6 +233,7 @@ export default function App() {
             currentTab={citizenTab}
             onTabChange={tab => {
               if (tab !== 'lapor') setPrefilledLocation('');
+              if (tab === 'lacak') loadReportsFromServer();
               setCitizenTab(tab);
             }}
             isHighContrast={isHighContrast}
@@ -219,6 +244,7 @@ export default function App() {
             {citizenTab === 'beranda' && (
               <BerandaView
                 reports={reports}
+                myReportIds={myReports.map(r => r.id)}
                 onNavigateToLapor={() => {
                   setPrefilledLocation('');
                   setCitizenTab('lapor');
@@ -240,8 +266,10 @@ export default function App() {
 
             {citizenTab === 'lacak' && (
               <LacakLaporanView
-                reports={reports}
+                reports={myReports}
                 initialSearchId={selectedReportId}
+                onRefreshStatus={loadReportsFromServer}
+                isRefreshing={isLoadingReports}
                 onNavigateToLaporWithLocation={loc => {
                   setPrefilledLocation(loc);
                   setCitizenTab('lapor');
@@ -254,6 +282,7 @@ export default function App() {
             currentTab={citizenTab}
             onTabChange={tab => {
               if (tab !== 'lapor') setPrefilledLocation('');
+              if (tab === 'lacak') loadReportsFromServer();
               setCitizenTab(tab);
             }}
           />
