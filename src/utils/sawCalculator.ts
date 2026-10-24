@@ -211,6 +211,20 @@ export const CATEGORY_CRITICAL_SUBTEXT: Record<FacilityCategory, string> = {
   other: 'Risiko kecelakaan langsung / fasilitas tidak dapat dilalui sama sekali',
 };
 
+export const CUSTOM_OBSTACLE_LABEL = 'Pengaduan lain';
+
+/**
+ * Parameter seragam untuk opsi "Pengaduan lain" (input manual).
+ * Apapun teks yang diketik pengguna pada kolom manual, nilai parameter
+ * hambatannya dijamin 100% sama tanpa dipengaruhi kata kunci kalimat.
+ */
+export const CUSTOM_OBSTACLE_CONFIG: ObstacleOptionConfig = {
+  label: CUSTOM_OBSTACLE_LABEL,
+  c2BaseAccess: 0.88,
+  c1SafetyBoost: 0.03,
+  c4PhysicalScale: 1.0,
+};
+
 function findObstacleConfig(
   facilityCategory: FacilityCategory,
   obstacleType: string
@@ -234,15 +248,19 @@ function clampScore(val: number, min = 0.2, max = 0.98): number {
 /**
  * Maps user form inputs (Category A, Obstacle B, Severity C, Impacted Groups D)
  * to raw criteria values (0 to 1 scale) while preserving weights 35%, 30%, 25%, 10%.
+ * Any custom manual input ("Pengaduan lain") uses uniform CUSTOM_OBSTACLE_CONFIG
+ * regardless of the text entered.
  */
 export function calculateRawCriteria(
   severity: SeverityLevel,
   facilityCategory: FacilityCategory,
   impactedGroupsCount: number,
-  obstacleType: string
+  obstacleType: string,
+  isCustomObstacle = false
 ): Omit<SawCriteria, 'totalSaw'> {
-  const matchedConfig = findObstacleConfig(facilityCategory, obstacleType);
-  const lowerObs = obstacleType.toLowerCase();
+  const activeObstacleConfig = isCustomObstacle
+    ? CUSTOM_OBSTACLE_CONFIG
+    : findObstacleConfig(facilityCategory, obstacleType) ?? CUSTOM_OBSTACLE_CONFIG;
 
   // Base severity anchors
   const severitySafetyBase =
@@ -273,39 +291,18 @@ export function calculateRawCriteria(
       : 0.35;
 
   // C1: Tingkat bahaya terhadap keselamatan (35%)
-  let safetyBoost = 0;
-  if (matchedConfig) {
-    safetyBoost = matchedConfig.c1SafetyBoost;
-  } else if (
-    lowerObs.includes('lubang') ||
-    lowerObs.includes('terbuka') ||
-    lowerObs.includes('penyeberangan') ||
-    lowerObs.includes('amblas') ||
-    lowerObs.includes('licin')
-  ) {
-    safetyBoost = 0.05;
-  }
-  const c1Safety = clampScore(severitySafetyBase + safetyBoost, 0.30, 0.98);
+  const c1Safety = clampScore(
+    severitySafetyBase + activeObstacleConfig.c1SafetyBoost,
+    0.30,
+    0.98
+  );
 
   // C2: Dampak terhadap aksesibilitas difabel (30%)
-  let baseAccess = 0.78;
-  if (matchedConfig) {
-    baseAccess = matchedConfig.c2BaseAccess;
-  } else if (
-    lowerObs.includes('ramp') ||
-    lowerObs.includes('kursi roda') ||
-    lowerObs.includes('halte') ||
-    lowerObs.includes('toilet')
-  ) {
-    baseAccess = 0.93;
-  } else if (lowerObs.includes('guiding block') || lowerObs.includes('tunanetra')) {
-    baseAccess = 0.91;
-  } else if (severity === 'critical' || severity === 'severe') {
-    baseAccess = 0.85;
-  } else {
-    baseAccess = 0.65;
-  }
-  const c2Access = clampScore(baseAccess + severityAccessDelta, 0.45, 0.98);
+  const c2Access = clampScore(
+    activeObstacleConfig.c2BaseAccess + severityAccessDelta,
+    0.45,
+    0.98
+  );
 
   // C3: Jumlah pengguna / fasilitas publik terdampak (25%)
   let facilityMultiplier = 0.5;
@@ -319,24 +316,11 @@ export function calculateRawCriteria(
   const c3Users = clampScore(facilityMultiplier * 0.6 + groupWeight * 0.4, 0.40, 0.98);
 
   // C4: Tingkat kerusakan / keparahan fisik (10%)
-  let physicalScale = 1.0;
-  if (matchedConfig) {
-    physicalScale = matchedConfig.c4PhysicalScale;
-  } else if (
-    lowerObs.includes('parkir') ||
-    lowerObs.includes('pkl') ||
-    lowerObs.includes('terkunci')
-  ) {
-    physicalScale = 0.85;
-  } else if (
-    lowerObs.includes('rusak') ||
-    lowerObs.includes('amblas') ||
-    lowerObs.includes('berlubang') ||
-    lowerObs.includes('pecah')
-  ) {
-    physicalScale = 1.05;
-  }
-  const c4Physical = clampScore(severityPhysicalBase * physicalScale, 0.28, 0.96);
+  const c4Physical = clampScore(
+    severityPhysicalBase * activeObstacleConfig.c4PhysicalScale,
+    0.28,
+    0.96
+  );
 
   return {
     c1Safety,

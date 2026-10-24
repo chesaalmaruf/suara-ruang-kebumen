@@ -53,6 +53,7 @@ export interface ReportItem {
   coordinates: Coordinates;
   facilityCategory: FacilityCategory;
   obstacleType: string;
+  isCustomObstacle?: boolean;
   severity: SeverityLevel;
   severityLabel: string;
   impactedGroups: string[];

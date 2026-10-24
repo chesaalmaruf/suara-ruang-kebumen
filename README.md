@@ -197,6 +197,13 @@ Setiap pilihan pada **Poin A (Kategori Ruang)** secara otomatis memuat **6 jenis
 | 5 | Permukaan paving / beton jalan warga pecah & bergelombang | `0.82` | `+0.03` | `1.04` |
 | 6 | Jalur warga minim penerangan & tanpa pembatas pada tepi rawan jatuh | `0.80` | `+0.06` | `0.94` |
 
+#### A.5. Opsi "Pengaduan Lain" (Input Manual di Semua Kategori)
+Di setiap kategori ruang pada **Poin B**, tersedia pilihan **`Pengaduan lain`** yang membuka kolom isian teks manual bagi warga apabila hambatan di lapangan belum termasuk dalam 6 opsi standar di atas.
+- **Skor Seragam Apapun Inputnya**: Apapun teks atau kalimat yang diketik warga pada kolom manual **`Pengaduan lain`**, algoritma menggunakan parameter konstanta seragam tanpa dipengaruhi kata kunci kalimat:
+  - `c2BaseAccess = 0.88`
+  - `c1SafetyBoost = +0.03`
+  - `c4PhysicalScale = 1.00`
+
 ---
 
 ### 4. Rumus Pembentukan Nilai Mentah, Normalisasi, dan Skor Skala `0–100`

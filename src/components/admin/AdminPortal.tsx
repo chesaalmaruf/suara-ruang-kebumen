@@ -187,6 +187,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       return (
         r.id.toLowerCase().includes(q) ||
         r.title.toLowerCase().includes(q) ||
+        r.obstacleType.toLowerCase().includes(q) ||
         r.placeName.toLowerCase().includes(q) ||
         r.address.toLowerCase().includes(q) ||
         r.district.toLowerCase().includes(q) ||

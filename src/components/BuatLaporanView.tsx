@@ -84,6 +84,10 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const [obstacleType, setObstacleType] = useState(
     CATEGORY_OBSTACLE_OPTIONS.public_space[0].label
   );
+  const [isCustomObstacle, setIsCustomObstacle] = useState(false);
+  const [customObstacleText, setCustomObstacleText] = useState('');
+  const customObstacleInputRef = useRef<HTMLInputElement>(null);
+
   const [severity, setSeverity] = useState<SeverityLevel>('severe');
   const [impactedGroups, setImpactedGroups] = useState<string[]>(['Penyandang disabilitas']);
 
@@ -289,9 +293,13 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [newTicketId, setNewTicketId] = useState('');
 
+  const effectiveObstacleType = isCustomObstacle
+    ? customObstacleText.trim()
+    : obstacleType;
+
   // Dynamic step progress indicator
   const step1Done = placeName.trim().length > 0 && address.trim().length > 0;
-  const step2Done = Boolean(category && obstacleType && severity);
+  const step2Done = Boolean(category && effectiveObstacleType && severity);
   const step3Done = notes.trim().length > 0 || photoUrl.length > 0;
   const currentStep = !step1Done ? 1 : !step3Done ? 2 : 3;
 
@@ -343,9 +351,9 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const handleReadSummary = () => {
     const summaryText = `Rangkuman Laporan Anda. Lokasi: ${
       placeName || 'belum diisi'
-    }, Kecamatan ${district}, ${address || 'alamat belum diisi'}. Hambatan: ${obstacleType}. Tingkat keparahan: ${severity}. Catatan: ${
-      notes || 'belum ada catatan'
-    }`;
+    }, Kecamatan ${district}, ${address || 'alamat belum diisi'}. Hambatan: ${
+      effectiveObstacleType || 'pengaduan lain belum diisi'
+    }. Tingkat keparahan: ${severity}. Catatan: ${notes || 'belum ada catatan'}`;
     speakText(summaryText);
   };
 
@@ -356,9 +364,16 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
     const cleanPlace = placeName.replace(/^📍\s*/, '').trim();
     const cleanAddress = address.trim();
     const cleanNotes = notes.trim();
+    const finalObstacle = isCustomObstacle ? customObstacleText.trim() : obstacleType;
 
     if (!cleanPlace || !cleanAddress) {
       setFormError('Mohon lengkapi Nama Tempat dan Alamat lokasi hambatan.');
+      return;
+    }
+
+    if (isCustomObstacle && !finalObstacle) {
+      setFormError('Mohon tuliskan jenis hambatan pada kolom Pengaduan lain.');
+      customObstacleInputRef.current?.focus();
       return;
     }
 
@@ -373,7 +388,8 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
       severity,
       category,
       impactedGroups.length,
-      obstacleType
+      finalObstacle,
+      isCustomObstacle
     );
     const totalSaw = computeSawScore(rawCriteria);
 
@@ -384,13 +400,14 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
 
     const newReport: ReportItem = {
       id: generatedId,
-      title: `${obstacleType} di ${cleanPlace}`,
+      title: `${finalObstacle} di ${cleanPlace}`,
       placeName: cleanPlace,
       address: cleanAddress,
       district,
       coordinates,
       facilityCategory: category,
-      obstacleType,
+      obstacleType: finalObstacle,
+      isCustomObstacle,
       severity,
       severityLabel:
         severity === 'critical'
@@ -1101,12 +1118,15 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             <div className="flex flex-wrap gap-1.5">
               {(CATEGORY_OBSTACLE_OPTIONS[category] || CATEGORY_OBSTACLE_OPTIONS.public_space).map(
                 opt => {
-                  const isSelected = obstacleType === opt.label;
+                  const isSelected = !isCustomObstacle && obstacleType === opt.label;
                   return (
                     <button
                       key={opt.label}
                       type="button"
-                      onClick={() => setObstacleType(opt.label)}
+                      onClick={() => {
+                        setIsCustomObstacle(false);
+                        setObstacleType(opt.label);
+                      }}
                       className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all text-left ${
                         isSelected
                           ? 'bg-[#00355f] text-white shadow-xs'
@@ -1123,7 +1143,52 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                   );
                 }
               )}
+
+              {/* Opsi Pengaduan Lain (Input Manual) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomObstacle(true);
+                  setTimeout(() => customObstacleInputRef.current?.focus(), 50);
+                }}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all text-left ${
+                  isCustomObstacle
+                    ? 'bg-[#00355f] text-white shadow-xs'
+                    : 'bg-[#f2f3ff] text-[#00355f] border border-dashed border-[#00355f]/40 hover:bg-[#eaedff]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px] shrink-0">
+                  {isCustomObstacle ? 'check' : 'edit_note'}
+                </span>
+                <span>Pengaduan lain</span>
+              </button>
             </div>
+
+            {isCustomObstacle && (
+              <div className="pt-1.5 space-y-1">
+                <label
+                  htmlFor="custom-obstacle-input"
+                  className="block text-[11px] font-bold text-[#00355f]"
+                >
+                  Tuliskan Pengaduan / Jenis Hambatan Lainnya{' '}
+                  <span className="text-[#ba1a1a]">*</span>
+                </label>
+                <input
+                  ref={customObstacleInputRef}
+                  id="custom-obstacle-input"
+                  type="text"
+                  value={customObstacleText}
+                  onChange={e => setCustomObstacleText(e.target.value)}
+                  required={isCustomObstacle}
+                  maxLength={120}
+                  placeholder="Ketik jenis hambatan aksesibilitas yang Anda temui..."
+                  className="w-full h-10 px-3.5 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[12px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-[#00355f]/25 focus:border-[#00355f] transition-all"
+                />
+                <p className="text-[10px] text-[#42474f]">
+                  Isi secara manual apabila jenis hambatan belum tercantum pada pilihan di atas.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Sub-bagian C: Tingkat Keparahan */}
