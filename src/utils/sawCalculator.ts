@@ -3,8 +3,8 @@ import { ReportItem, SawCriteria, SeverityLevel, FacilityCategory } from '../typ
 export const SAW_WEIGHTS = {
   C1_SAFETY: 0.35,
   C2_ACCESS: 0.30,
-  C3_USERS: 0.20,
-  C4_PHYSICAL: 0.15,
+  C3_USERS: 0.25,
+  C4_PHYSICAL: 0.10,
 };
 
 /**

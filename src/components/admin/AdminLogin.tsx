@@ -99,8 +99,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               {[
                 { step: '01', label: 'Keselamatan Warga', weight: '35%' },
                 { step: '02', label: 'Aksesibilitas Difabel', weight: '30%' },
-                { step: '03', label: 'Cakupan Pengguna', weight: '20%' },
-                { step: '04', label: 'Kerusakan Fisik', weight: '15%' },
+                { step: '03', label: 'Fasilitas & Pengguna', weight: '25%' },
+                { step: '04', label: 'Kerusakan Fisik', weight: '10%' },
               ].map(item => (
                 <div
                   key={item.step}

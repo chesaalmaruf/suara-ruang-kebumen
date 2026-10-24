@@ -17,9 +17,9 @@ export type ReportStatus = 'submitted' | 'verified' | 'in_progress' | 'completed
 export interface SawCriteria {
   c1Safety: number; // Tingkat Bahaya Keselamatan (35%)
   c2Access: number; // Dampak Aksesibilitas Difabel (30%)
-  c3Users: number; // Jumlah Pengguna Terdampak (20%)
-  c4Physical: number; // Tingkat Kerusakan Fisik (15%)
-  totalSaw: number; // Bobot SAW terakumulasi
+  c3Users: number; // Jumlah Pengguna / Fasilitas Publik Terdampak (25%)
+  c4Physical: number; // Tingkat Kerusakan Fisik (10%)
+  totalSaw: number; // Bobot prioritas terakumulasi
   rank?: number;
 }
 
