@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { ReportItem } from '../types';
+import { formatDistrictLabel } from '../utils/placeSearch';
 import { toScore100 } from '../utils/sawCalculator';
 
 interface LeafletMapViewProps {
@@ -80,6 +81,7 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   const userAccuracyCircleRef = useRef<L.Circle | null>(null);
   const pickerMarkerRef = useRef<L.Marker | null>(null);
   const lastCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastReportsBoundsKeyRef = useRef<string>('');
 
   const [internalExpanded, setInternalExpanded] = useState(false);
   const expanded = onToggleExpand ? isExpanded : internalExpanded;
@@ -287,19 +289,38 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
     markersLayer.clearLayers();
 
-    // Render reports as markers
+    // Render reports as markers — Status ('completed' / 'in_progress' / 'verified') ALWAYS takes precedence over initial severity!
     reports.forEach(report => {
-      const isCritical = report.severity === 'critical' || report.sawScores.totalSaw >= 0.85;
-      const isProgress = report.status === 'in_progress';
       const isCompleted = report.status === 'completed';
+      const isProgress = report.status === 'in_progress' || report.status === 'verified';
+      const isCritical =
+        !isCompleted &&
+        !isProgress &&
+        (report.severity === 'critical' || (report.sawScores?.totalSaw ?? 0) >= 0.85);
 
-      const colorClass = isCritical
-        ? '#ba1a1a'
+      const colorClass = isCompleted
+        ? '#005713'
         : isProgress
         ? '#006496'
-        : isCompleted
-        ? '#005713'
+        : isCritical
+        ? '#ba1a1a'
         : '#0f4c81';
+
+      const badgeBg = isCompleted
+        ? '#a3f69c'
+        : isProgress
+        ? '#cce5ff'
+        : isCritical
+        ? '#ffdad6'
+        : '#eaedff';
+
+      const badgeText = isCompleted
+        ? '#002204'
+        : isProgress
+        ? '#00517b'
+        : isCritical
+        ? '#ba1a1a'
+        : '#00355f';
 
       const iconHtml = `
         <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
@@ -310,12 +331,12 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
           }
           <div style="width: 28px; height: 28px; border-radius: 9999px; background: ${colorClass}; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); border: 2px solid white; font-weight: bold; font-size: 11px;">
             ${
-              isCritical
-                ? '⚠️'
+              isCompleted
+                ? '✓'
                 : isProgress
                 ? '🛠️'
-                : isCompleted
-                ? '✓'
+                : isCritical
+                ? '⚠️'
                 : '📍'
             }
           </div>
@@ -346,19 +367,22 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
       const cleanId = report.id.replace(/[^a-zA-Z0-9]/g, '');
       const popupHtml = `
-        <div style="font-family: 'Plus Jakarta Sans', sans-serif; padding: 4px; min-width: 180px;">
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; padding: 4px; min-width: 185px;">
           <div style="font-size: 10px; font-weight: 800; color: ${colorClass}; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-            ${report.id} • Skor Prioritas: ${toScore100(report.sawScores.totalSaw)}/100
+            ${escapeHtml(report.id)} • Skor Prioritas: ${toScore100(report.sawScores.totalSaw)}/100
           </div>
-          <div style="font-size: 13px; font-weight: 700; color: #131b2e; margin-bottom: 4px; line-height: 1.3;">
-            ${report.title}
+          <div style="font-size: 13px; font-weight: 700; color: #131b2e; margin-bottom: 3px; line-height: 1.3;">
+            ${escapeHtml(report.title)}
+          </div>
+          <div style="font-size: 10.5px; font-weight: 700; color: #00355f; margin-bottom: 2px;">
+            ${escapeHtml(formatDistrictLabel(report.district))}
           </div>
           <div style="font-size: 11px; color: #42474f; margin-bottom: 8px;">
-            ${report.address}
+            ${escapeHtml(report.address)}
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="background: #eaedff; color: #00355f; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 10px;">
-              ${report.statusLabel}
+            <span style="background: ${badgeBg}; color: ${badgeText}; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 10px;">
+              ${escapeHtml(report.statusLabel)}
             </span>
           </div>
           <button 
@@ -393,6 +417,31 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
       marker.addTo(markersLayer);
     });
+
+    // Auto-frame report markers when report coordinate set changes (e.g. filtering by Kecamatan or viewing reports outside Kebumen)
+    if (!isPickerMode && reports.length > 0) {
+      const boundsKey = reports
+        .map(r => `${r.id}:${r.coordinates.lat.toFixed(4)},${r.coordinates.lng.toFixed(4)}`)
+        .sort()
+        .join('|');
+
+      if (boundsKey !== lastReportsBoundsKeyRef.current) {
+        lastReportsBoundsKeyRef.current = boundsKey;
+        if (reports.length === 1) {
+          map.setView([reports[0].coordinates.lat, reports[0].coordinates.lng], 16, {
+            animate: true,
+          });
+        } else {
+          const latLngs = reports.map(
+            r => [r.coordinates.lat, r.coordinates.lng] as [number, number]
+          );
+          const bounds = L.latLngBounds(latLngs);
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [36, 36], maxZoom: 16, animate: true });
+          }
+        }
+      }
+    }
 
     // In picker mode, render designated picked coordinates & smoothly fly map when coordinates change
     if (isPickerMode && selectedCoordinates) {

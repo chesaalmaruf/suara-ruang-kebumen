@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FacilityCategory, ReportItem, SeverityLevel } from '../types';
 import { compressImageFile, formatCurrentWibTime } from '../utils/imageHelper';
 import {
+  KNOWN_KEBUMEN_DISTRICTS,
   PlaceSuggestion,
+  extractDistrictFromAddress,
+  formatDistrictLabel,
+  resolveReportDistrict,
   reverseGeocodePoint,
   searchLocalKebumenPlaces,
   searchPlacesHybrid,
@@ -24,28 +28,7 @@ interface BuatLaporanViewProps {
   initialPlaceName?: string;
 }
 
-const KEBUMEN_DISTRICTS = [
-  'Kebumen',
-  'Gombong',
-  'Karanganyar',
-  'Pejagoan',
-  'Klirong',
-  'Sruweng',
-  'Prembun',
-  'Kutowinangun',
-  'Petanahan',
-  'Ayah',
-  'Rowokele',
-  'Sempor',
-  'Buayan',
-  'Adimulyo',
-  'Kuwarasan',
-  'Alian',
-  'Puring',
-  'Ambal',
-  'Mirit',
-  'Lainnya',
-];
+const KEBUMEN_DISTRICTS = [...KNOWN_KEBUMEN_DISTRICTS, 'Lainnya'];
 
 export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   onSubmitReport,
@@ -54,6 +37,8 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   // Clean initial form state (no pre-filled dummy values)
   const [placeName, setPlaceName] = useState(initialPlaceName);
   const [district, setDistrict] = useState('Kebumen');
+  const [customDistrictText, setCustomDistrictText] = useState('');
+  const [isDistrictManuallyChosen, setIsDistrictManuallyChosen] = useState(false);
   const [address, setAddress] = useState('');
   const [isAddressAutoFilled, setIsAddressAutoFilled] = useState(false);
   const [coordinates, setCoordinates] = useState({ lat: -7.66875, lng: 109.6521 });
@@ -128,7 +113,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
     if (localHits.length > 0) {
       const top = localHits[0];
       setCoordinates({ lat: top.lat, lng: top.lng });
-      if (top.district && KEBUMEN_DISTRICTS.includes(top.district)) {
+      if (top.district) {
         setDistrict(top.district);
       }
       setAddress(top.address);
@@ -223,8 +208,10 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
     setPlaceName(item.name);
     setFullscreenQuery(item.name);
     setCoordinates({ lat: item.lat, lng: item.lng });
-    if (item.district && KEBUMEN_DISTRICTS.includes(item.district)) {
-      setDistrict(item.district);
+    const detected = item.district || extractDistrictFromAddress(item.address);
+    if (detected) {
+      setDistrict(detected);
+      setIsDistrictManuallyChosen(false);
     }
     if (!address.trim() || isAddressAutoFilled) {
       setAddress(item.address);
@@ -275,8 +262,9 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
     if (shouldFillPlaceName && rev.roadOrPlace) {
       setPlaceName(rev.roadOrPlace);
     }
-    if (rev.district && KEBUMEN_DISTRICTS.includes(rev.district)) {
+    if (rev.district) {
       setDistrict(rev.district);
+      setIsDistrictManuallyChosen(false);
     }
     if (rev.fullAddress && (!address.trim() || isAddressAutoFilled)) {
       setAddress(rev.fullAddress);
@@ -398,12 +386,28 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
     const nowFormatted = formatCurrentWibTime();
     setNewTicketId(generatedId);
 
+    const effectiveDistrictChoice =
+      district === 'Lainnya' && customDistrictText.trim()
+        ? customDistrictText.trim()
+        : district;
+
+    const resolvedDistrictObj = resolveReportDistrict({
+      district: isDistrictManuallyChosen ? effectiveDistrictChoice : district,
+      address: cleanAddress,
+      placeName: cleanPlace,
+      coordinates,
+    });
+    const finalDistrict =
+      isDistrictManuallyChosen && effectiveDistrictChoice !== 'Lainnya'
+        ? effectiveDistrictChoice
+        : resolvedDistrictObj.district;
+
     const newReport: ReportItem = {
       id: generatedId,
       title: `${finalObstacle} di ${cleanPlace}`,
       placeName: cleanPlace,
       address: cleanAddress,
-      district,
+      district: finalDistrict,
       coordinates,
       facilityCategory: category,
       obstacleType: finalObstacle,
@@ -689,7 +693,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                                 </span>
                                 {item.district && (
                                   <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#eaedff] text-[#00355f]">
-                                    Kec. {item.district}
+                                    {formatDistrictLabel(item.district)}
                                   </span>
                                 )}
                               </div>
@@ -763,26 +767,48 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             )}
           </div>
 
-          {/* Kolom Kecamatan */}
-          <div className="space-y-1">
+          {/* Kolom Kecamatan / Wilayah */}
+          <div className="space-y-2">
             <label
               className="block text-[12px] font-bold text-[#131b2e]"
               htmlFor="district-select"
             >
-              Kecamatan <span className="text-[#ba1a1a]">*</span>
+              Kecamatan / Wilayah <span className="text-[#ba1a1a]">*</span>
             </label>
             <select
               id="district-select"
               value={district}
-              onChange={e => setDistrict(e.target.value)}
+              onChange={e => {
+                setDistrict(e.target.value);
+                setIsDistrictManuallyChosen(true);
+              }}
               className="w-full h-11 px-3 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[13px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f]"
             >
-              {KEBUMEN_DISTRICTS.map(d => (
+              {!KEBUMEN_DISTRICTS.includes(district) && district.trim() !== '' && (
+                <option value={district}>
+                  {formatDistrictLabel(district, 'full')} (Terdeteksi Peta)
+                </option>
+              )}
+              {KNOWN_KEBUMEN_DISTRICTS.map(d => (
                 <option key={d} value={d}>
                   Kecamatan {d}
                 </option>
               ))}
+              <option value="Lainnya">Wilayah / Kecamatan Lainnya (Isi Manual)</option>
             </select>
+
+            {district === 'Lainnya' && (
+              <input
+                type="text"
+                value={customDistrictText}
+                onChange={e => {
+                  setCustomDistrictText(e.target.value);
+                  setIsDistrictManuallyChosen(true);
+                }}
+                placeholder="Ketik nama Kecamatan / Kota / Kabupaten..."
+                className="w-full h-10 px-3 rounded-xl bg-white border border-[#00355f]/40 text-[#131b2e] text-[12px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#00355f]"
+              />
+            )}
           </div>
 
           {/* Kolom Alamat */}
@@ -958,7 +984,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                                       </span>
                                       {item.district && (
                                         <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#eaedff] text-[#00355f]">
-                                          Kec. {item.district}
+                                          {formatDistrictLabel(item.district)}
                                         </span>
                                       )}
                                     </div>
@@ -1004,7 +1030,11 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                         {placeName || 'Titik Lokasi Dipilih'}
                       </p>
                       <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-[#eaedff] text-[#00355f]">
-                        Kec. {district}
+                        {formatDistrictLabel(
+                          district === 'Lainnya' && customDistrictText.trim()
+                            ? customDistrictText.trim()
+                            : district
+                        )}
                       </span>
                     </div>
                     <p className="text-[11px] text-[#42474f] line-clamp-1">

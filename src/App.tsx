@@ -9,6 +9,7 @@ import { LacakLaporanView } from './components/LacakLaporanView';
 import { LEGACY_DUMMY_IDS } from './data/initialData';
 import { ReportItem } from './types';
 import { rankReportsBySaw } from './utils/sawCalculator';
+import { resolveReportDistrict } from './utils/placeSearch';
 import {
   fetchReports,
   createReport,
@@ -16,6 +17,7 @@ import {
   deleteReport,
   DatabaseStatus,
   PUBLIC_CACHE_KEY,
+  MY_DEVICE_REPORTS_KEY,
   syncAndGetMyDeviceReports,
   saveReportToMyDevice,
   removeReportFromMyDevice,
@@ -65,9 +67,9 @@ export default function App() {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
-            const clean = parsed.filter(
-              (r: ReportItem) => r && !LEGACY_DUMMY_IDS.includes(r.id)
-            );
+            const clean = parsed
+              .filter((r: ReportItem) => r && !LEGACY_DUMMY_IDS.includes(r.id))
+              .map((r: ReportItem) => resolveReportDistrict(r));
             return rankReportsBySaw(clean);
           }
         }
@@ -101,6 +103,31 @@ export default function App() {
 
   useEffect(() => {
     loadReportsFromServer();
+  }, [loadReportsFromServer]);
+
+  // Auto-sync when switching browser tabs (/admin <-> /) or receiving cross-tab localStorage updates
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        loadReportsFromServer();
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === PUBLIC_CACHE_KEY || e.key === MY_DEVICE_REPORTS_KEY) {
+        loadReportsFromServer();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [loadReportsFromServer]);
 
   useEffect(() => {
@@ -160,17 +187,22 @@ export default function App() {
 
   // Citizen submits a new report -> saved to THIS device's history & MongoDB (for Admin)
   const handleAddNewReport = async (newReport: ReportItem) => {
-    const updatedDeviceReports = saveReportToMyDevice(newReport);
+    const normalizedReport = resolveReportDistrict({
+      ...newReport,
+      updatedAt: Date.now(),
+    });
+    const updatedDeviceReports = saveReportToMyDevice(normalizedReport);
     setMyReports(updatedDeviceReports);
 
-    const updatedList = [newReport, ...reports.filter(r => r.id !== newReport.id)];
-    const rankedList = rankReportsBySaw(updatedList);
-    setReports(rankedList);
-    setSelectedReportId(newReport.id);
+    setReports(prev => {
+      const updatedList = [normalizedReport, ...prev.filter(r => r.id !== normalizedReport.id)];
+      return rankReportsBySaw(updatedList);
+    });
+    setSelectedReportId(normalizedReport.id);
     setPrefilledLocation('');
 
     try {
-      await createReport(newReport);
+      await createReport(normalizedReport);
       await loadReportsFromServer();
     } catch (err) {
       console.error('Failed to sync new report with MongoDB:', err);
@@ -183,17 +215,30 @@ export default function App() {
 
   // Admin processes a report (verify, issue SPK, update progress, upload after-photo, complete)
   const handleProcessReport = async (reportId: string, updates: Partial<ReportItem>) => {
-    const updated = reports.map(r => (r.id === reportId ? { ...r, ...updates } : r));
-    const ranked = rankReportsBySaw(updated);
-    setReports(ranked);
-    setMyReports(prev =>
-      prev.some(r => r.id === reportId)
-        ? syncAndGetMyDeviceReports(ranked, dbStatus.connected)
-        : prev
-    );
+    const cleanTargetId = reportId.trim();
+    const stampedUpdates: Partial<ReportItem> = {
+      ...updates,
+      updatedAt: Date.now(),
+    };
+
+    let targetMerged: ReportItem | undefined;
+
+    setReports(prev => {
+      const updated = prev.map(r => {
+        if (r.id.trim() === cleanTargetId) {
+          const merged = resolveReportDistrict({ ...r, ...stampedUpdates });
+          targetMerged = merged;
+          return merged;
+        }
+        return r;
+      });
+      const ranked = rankReportsBySaw(updated);
+      setMyReports(syncAndGetMyDeviceReports(ranked, dbStatus.connected));
+      return ranked;
+    });
 
     try {
-      await updateReport(reportId, updates);
+      await updateReport(cleanTargetId, stampedUpdates, targetMerged);
     } catch (err) {
       console.error('Failed to sync report update with MongoDB:', err);
     }
@@ -201,17 +246,16 @@ export default function App() {
 
   // Admin deletes a report
   const handleDeleteReport = async (reportId: string) => {
-    removeReportFromMyDevice(reportId);
-    const filtered = reports.filter(r => r.id !== reportId);
-    const ranked = rankReportsBySaw(filtered);
-    setReports(ranked);
-    setMyReports(prev => prev.filter(r => r.id !== reportId));
-    if (selectedReportId === reportId) {
+    const cleanTargetId = reportId.trim();
+    removeReportFromMyDevice(cleanTargetId);
+    setReports(prev => rankReportsBySaw(prev.filter(r => r.id.trim() !== cleanTargetId)));
+    setMyReports(prev => prev.filter(r => r.id.trim() !== cleanTargetId));
+    if (selectedReportId.trim() === cleanTargetId) {
       setSelectedReportId('');
     }
 
     try {
-      await deleteReport(reportId);
+      await deleteReport(cleanTargetId);
     } catch (err) {
       console.error('Failed to delete report from MongoDB:', err);
     }

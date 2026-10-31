@@ -74,4 +74,5 @@ export interface ReportItem {
   completedAt?: string;
   reporterDeviceId?: string;
   localSavedAt?: number;
+  updatedAt?: number;
 }

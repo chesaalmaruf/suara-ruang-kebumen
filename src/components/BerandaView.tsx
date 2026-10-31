@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ReportItem } from '../types';
-import { toScore100 } from '../utils/sawCalculator';
+import { KNOWN_KEBUMEN_DISTRICTS, formatDistrictLabel } from '../utils/placeSearch';
+import { cleanLegacySawText, toScore100 } from '../utils/sawCalculator';
 import { LeafletMapView } from './LeafletMapView';
 
 interface BerandaViewProps {
@@ -19,35 +20,82 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
   const [selectedFilter, setSelectedFilter] = useState<
     'all' | 'critical' | 'in_progress' | 'completed'
   >('all');
-  const [publicPreviewReport, setPublicPreviewReport] = useState<ReportItem | null>(null);
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('ALL');
+  const [showAllReports, setShowAllReports] = useState(false);
+  const [publicPreviewReportId, setPublicPreviewReportId] = useState<string | null>(null);
+
+  const publicPreviewReport = useMemo(
+    () =>
+      publicPreviewReportId
+        ? reports.find(r => r.id === publicPreviewReportId) || null
+        : null,
+    [reports, publicPreviewReportId]
+  );
 
   const handleOpenReportItem = (reportId: string) => {
     if (myReportIds.includes(reportId)) {
       onNavigateToLacak(reportId);
       return;
     }
-    const target = reports.find(r => r.id === reportId) || null;
-    setPublicPreviewReport(target);
+    setPublicPreviewReportId(reportId);
   };
 
-  const completedReport = useMemo(
-    () => reports.find(r => r.status === 'completed') || null,
-    [reports]
-  );
+  // Build district counts across all live reports (both Kebumen & external locations)
+  const { reportedDistricts, unrepresentedKebumenDistricts } = useMemo(() => {
+    const counts = new Map<string, number>();
+    reports.forEach(r => {
+      const d = (r.district || 'Kebumen').trim();
+      if (!d) return;
+      counts.set(d, (counts.get(d) || 0) + 1);
+    });
 
-  // Dynamic live statistics from real reports
-  const criticalCount = reports.filter(
-    r => r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85)
+    const reported = Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'id'));
+
+    const reportedSet = new Set(reported.map(d => d.name.toLowerCase()));
+    const remainingKebumen = KNOWN_KEBUMEN_DISTRICTS.filter(
+      d => !reportedSet.has(d.toLowerCase())
+    );
+
+    return {
+      reportedDistricts: reported,
+      unrepresentedKebumenDistricts: remainingKebumen,
+    };
+  }, [reports]);
+
+  // Reports scoped by selected Kecamatan / Wilayah
+  const districtScopedReports = useMemo(() => {
+    if (selectedDistrict === 'ALL') return reports;
+    return reports.filter(
+      r => (r.district || 'Kebumen').trim().toLowerCase() === selectedDistrict.toLowerCase()
+    );
+  }, [reports, selectedDistrict]);
+
+  // Most recently completed report (sorted by updatedAt descending so newly completed non-Kebumen reports appear immediately)
+  const completedReport = useMemo(() => {
+    const completedList = districtScopedReports.filter(r => r.status === 'completed');
+    if (completedList.length === 0) return null;
+    return [...completedList].sort(
+      (a, b) => (b.updatedAt || b.localSavedAt || 0) - (a.updatedAt || a.localSavedAt || 0)
+    )[0];
+  }, [districtScopedReports]);
+
+  // Dynamic live statistics from district-scoped reports (completed reports are never counted as active critical)
+  const criticalCount = districtScopedReports.filter(
+    r =>
+      r.status !== 'completed' &&
+      (r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85))
   ).length;
-  const inProgressCount = reports.filter(
+  const inProgressCount = districtScopedReports.filter(
     r => r.status === 'in_progress' || r.status === 'verified'
   ).length;
-  const completedCount = reports.filter(r => r.status === 'completed').length;
-  const totalReportsCount = reports.length;
+  const completedCount = districtScopedReports.filter(r => r.status === 'completed').length;
+  const totalReportsCount = districtScopedReports.length;
   const completionPercentage =
     totalReportsCount > 0 ? ((completedCount / totalReportsCount) * 100).toFixed(0) : '0';
 
-  // Aggregate real reports by sub-district (Kecamatan)
+  // Aggregate real reports by sub-district (Kecamatan / Wilayah)
   const districtStats = useMemo(() => {
     const map = new Map<string, { count: number; maxSaw: number }>();
     reports.forEach(r => {
@@ -63,7 +111,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
     const entries = Array.from(map.entries())
       .map(([district, info]) => ({ district, ...info }))
       .sort((a, b) => b.count - a.count || b.maxSaw - a.maxSaw)
-      .slice(0, 3);
+      .slice(0, 4);
 
     const maxCount = entries.length > 0 ? Math.max(...entries.map(e => e.count), 1) : 1;
     return entries.map(e => ({
@@ -75,35 +123,75 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
   // Filtered live reports feed
   const filteredReports = useMemo(() => {
     if (selectedFilter === 'critical') {
-      return reports.filter(
-        r => r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85)
+      return districtScopedReports.filter(
+        r =>
+          r.status !== 'completed' &&
+          (r.severity === 'critical' ||
+            (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85))
       );
     }
     if (selectedFilter === 'in_progress') {
-      return reports.filter(r => r.status === 'in_progress' || r.status === 'verified');
+      return districtScopedReports.filter(
+        r => r.status === 'in_progress' || r.status === 'verified'
+      );
     }
     if (selectedFilter === 'completed') {
-      return reports.filter(r => r.status === 'completed');
+      return districtScopedReports.filter(r => r.status === 'completed');
     }
-    return reports;
-  }, [reports, selectedFilter]);
+    return districtScopedReports;
+  }, [districtScopedReports, selectedFilter]);
+
+  const displayedReports = showAllReports ? filteredReports : filteredReports.slice(0, 10);
 
   return (
     <div className="flex flex-col w-full px-4 pt-2 pb-24 space-y-5 max-w-md mx-auto">
-      {/* 1. Interactive Map Section: Peta Sebaran Aksesibilitas Kebumen */}
+      {/* 1. Interactive Map Section: Peta Sebaran Aksesibilitas */}
       <section className="w-full bg-white rounded-2xl p-4 shadow-sm border border-[#eaedff] space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[20px] text-[#00355f]">map</span>
-            <h2 className="text-[16px] font-bold text-[#131b2e]">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="material-symbols-outlined text-[20px] text-[#00355f] shrink-0">
+              map
+            </span>
+            <h2 className="text-[15px] font-bold text-[#131b2e] truncate">
               Peta Sebaran Infrastruktur
             </h2>
           </div>
+
+          {/* Kecamatan / Wilayah Filter */}
+          <select
+            aria-label="Filter Kecamatan atau Wilayah"
+            value={selectedDistrict}
+            onChange={e => {
+              setSelectedDistrict(e.target.value);
+              setShowAllReports(false);
+            }}
+            className="max-w-[165px] h-8 px-2.5 rounded-xl bg-[#f2f3ff] border border-[#dae2fd] text-[11px] font-bold text-[#00355f] focus:outline-none focus:ring-2 focus:ring-[#00355f] truncate"
+          >
+            <option value="ALL">Semua Wilayah ({reports.length})</option>
+            {reportedDistricts.length > 0 && (
+              <optgroup label="Wilayah Terlapor">
+                {reportedDistricts.map(d => (
+                  <option key={d.name} value={d.name}>
+                    {formatDistrictLabel(d.name)} ({d.count})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {unrepresentedKebumenDistricts.length > 0 && (
+              <optgroup label="Kecamatan Kab. Kebumen Lainnya">
+                {unrepresentedKebumenDistricts.map(d => (
+                  <option key={d} value={d}>
+                    Kec. {d} (0)
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
         </div>
 
         {/* Map Canvas Container with Live Area Tracking */}
         <LeafletMapView
-          reports={reports}
+          reports={districtScopedReports}
           onSelectReport={reportId => handleOpenReportItem(reportId)}
           heightClass="h-72"
           geofenceRadiusMeters={20}
@@ -177,7 +265,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
             Transparansi Penanganan
           </h2>
           <span className="text-[11px] text-[#42474f] bg-[#eaedff] px-2 py-0.5 rounded-full font-medium">
-            Data Real-Time
+            {selectedDistrict === 'ALL' ? 'Data Real-Time' : formatDistrictLabel(selectedDistrict)}
           </span>
         </div>
 
@@ -188,11 +276,13 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
             <span className="text-[24px] font-black text-[#00355f] my-1 tabular-nums">
               {totalReportsCount}
             </span>
-            <span className="text-[10px] text-[#42474f] flex items-center gap-1 font-semibold">
-              <span className="material-symbols-outlined text-[13px] text-[#005713]">
+            <span className="text-[10px] text-[#42474f] flex items-center gap-1 font-semibold truncate">
+              <span className="material-symbols-outlined text-[13px] text-[#005713] shrink-0">
                 trending_up
               </span>
-              Kab. Kebumen
+              <span className="truncate">
+                {selectedDistrict === 'ALL' ? 'Semua Wilayah' : formatDistrictLabel(selectedDistrict)}
+              </span>
             </span>
           </div>
 
@@ -231,15 +321,24 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
 
           {districtStats.length === 0 ? (
             <p className="text-[12px] text-[#42474f] py-2 text-center">
-              Belum ada laporan aktif yang tercatat di wilayah Kabupaten Kebumen.
+              Belum ada laporan aktif yang menunggu penanganan.
             </p>
           ) : (
             <div className="space-y-2.5">
               {districtStats.map((item, idx) => (
-                <div key={item.district}>
+                <button
+                  key={item.district}
+                  type="button"
+                  onClick={() =>
+                    setSelectedDistrict(prev =>
+                      prev === item.district ? 'ALL' : item.district
+                    )
+                  }
+                  className="w-full text-left group"
+                >
                   <div className="flex justify-between text-[11px] mb-1 text-[#131b2e]">
-                    <span className="font-semibold">
-                      {idx + 1}. Kec. {item.district}
+                    <span className="font-semibold group-hover:text-[#00355f] group-hover:underline">
+                      {idx + 1}. {formatDistrictLabel(item.district)}
                     </span>
                     <span
                       className={`font-bold ${
@@ -261,7 +360,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
                       style={{ width: `${item.percent}%` }}
                     ></div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -270,16 +369,27 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
 
       {/* 4. Daftar Laporan Warga Real-Time */}
       <section className="w-full space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-[16px] font-bold text-[#131b2e] flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[20px] text-[#00355f]">
               format_list_bulleted
             </span>
             Daftar Laporan Warga
           </h2>
-          <span className="text-[11px] font-bold text-[#006496]">
-            {filteredReports.length} Tiket
-          </span>
+          <div className="flex items-center gap-2">
+            {selectedDistrict !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedDistrict('ALL')}
+                className="text-[11px] font-bold text-[#ba1a1a] hover:underline"
+              >
+                Reset Wilayah
+              </button>
+            )}
+            <span className="text-[11px] font-bold text-[#006496]">
+              {filteredReports.length} Tiket
+            </span>
+          </div>
         </div>
 
         {/* Filter Chips */}
@@ -293,7 +403,10 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
             <button
               key={chip.id}
               type="button"
-              onClick={() => setSelectedFilter(chip.id as any)}
+              onClick={() => {
+                setSelectedFilter(chip.id as any);
+                setShowAllReports(false);
+              }}
               className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors ${
                 selectedFilter === chip.id
                   ? 'bg-[#00355f] text-white'
@@ -311,15 +424,17 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               inbox
             </span>
             <p className="text-[13px] font-bold text-[#131b2e]">
-              Belum Ada Laporan pada Kategori Ini
+              Belum Ada Laporan pada Filter Ini
             </p>
             <p className="text-[11px] text-[#42474f]">
-              Gunakan tombol &ldquo;Laporkan Kerusakan&rdquo; di atas untuk mengirim laporan fasilitas aksesibilitas baru.
+              {selectedDistrict !== 'ALL'
+                ? `Belum ada laporan tercatat untuk ${formatDistrictLabel(selectedDistrict)} pada kategori ini.`
+                : 'Gunakan tombol "Laporkan Kerusakan" di atas untuk mengirim laporan fasilitas aksesibilitas baru.'}
             </p>
           </div>
         ) : (
           <div className="space-y-2.5">
-            {filteredReports.slice(0, 5).map(rep => (
+            {displayedReports.map(rep => (
               <button
                 key={rep.id}
                 type="button"
@@ -349,7 +464,7 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
                 </h3>
                 <div className="flex items-center justify-between text-[11px] text-[#42474f]">
                   <span className="truncate">
-                    Kec. {rep.district} • {rep.placeName}
+                    {formatDistrictLabel(rep.district)} • {rep.placeName}
                   </span>
                   <span className="font-mono font-bold text-[#006496] shrink-0 ml-2">
                     Skor {toScore100(rep.sawScores.totalSaw)}/100
@@ -357,11 +472,23 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
                 </div>
               </button>
             ))}
+
+            {filteredReports.length > 10 && (
+              <button
+                type="button"
+                onClick={() => setShowAllReports(prev => !prev)}
+                className="w-full py-2.5 rounded-xl bg-[#f2f3ff] hover:bg-[#eaedff] text-[#00355f] text-[12px] font-bold transition-colors"
+              >
+                {showAllReports
+                  ? 'Ringkas Daftar Laporan'
+                  : `Tampilkan Semua (${filteredReports.length} Tiket)`}
+              </button>
+            )}
           </div>
         )}
       </section>
 
-      {/* 5. Hasil Perbaikan Terbaru (Only rendered from real completed reports) */}
+      {/* 5. Hasil Perbaikan Terbaru (Rendered from real completed reports) */}
       {completedReport && (
         <section className="w-full space-y-3 pb-2">
           <div className="flex items-center justify-between">
@@ -416,12 +543,13 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
             )}
 
             <div className="p-4 space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#a3f69c] text-[#002204]">
                   <span className="material-symbols-outlined text-[14px]">check</span>
                   Terverifikasi DPUPR
                 </span>
-                <span className="text-[11px] text-[#42474f]">
+                <span className="text-[11px] text-[#42474f] truncate">
+                  {formatDistrictLabel(completedReport.district)} •{' '}
                   {completedReport.completedAt || completedReport.createdAt}
                 </span>
               </div>
@@ -451,23 +579,33 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
         </section>
       )}
 
-      {/* Ringkasan Informasi Laporan Publik (tanpa masuk ke Riwayat Lacak Perangkat) */}
+      {/* Ringkasan Informasi Laporan Publik (Live Status, Bukti Foto & Linimasa) */}
       {publicPreviewReport && (
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setPublicPreviewReport(null)}
+          onClick={() => setPublicPreviewReportId(null)}
         >
           <div
-            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-4 space-y-3 shadow-2xl border border-[#eaedff] max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-4 space-y-3.5 shadow-2xl border border-[#eaedff] max-h-[85vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="space-y-0.5 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] font-mono font-bold text-[#00355f] bg-[#eaedff] px-2 py-0.5 rounded">
                     {publicPreviewReport.id}
                   </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#d2e4ff] text-[#00355f]">
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                      publicPreviewReport.status === 'completed'
+                        ? 'bg-[#a3f69c] text-[#002204]'
+                        : publicPreviewReport.status === 'in_progress'
+                        ? 'bg-[#cce5ff] text-[#00517b]'
+                        : publicPreviewReport.status === 'verified'
+                        ? 'bg-[#d2e4ff] text-[#00355f]'
+                        : 'bg-[#ffdad6] text-[#ba1a1a]'
+                    }`}
+                  >
                     {publicPreviewReport.statusLabel}
                   </span>
                 </div>
@@ -475,12 +613,12 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
                   {publicPreviewReport.title}
                 </h3>
                 <p className="text-[11px] text-[#42474f]">
-                  Kec. {publicPreviewReport.district} • {publicPreviewReport.address}
+                  {formatDistrictLabel(publicPreviewReport.district)} • {publicPreviewReport.address}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setPublicPreviewReport(null)}
+                onClick={() => setPublicPreviewReportId(null)}
                 aria-label="Tutup detail"
                 className="w-8 h-8 rounded-full bg-[#f2f3ff] hover:bg-[#eaedff] text-[#131b2e] flex items-center justify-center shrink-0"
               >
@@ -488,13 +626,56 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               </button>
             </div>
 
-            {publicPreviewReport.photoBefore && (
-              <div className="rounded-xl overflow-hidden h-40 bg-[#f2f3ff] border border-[#eaedff]">
-                <img
-                  src={publicPreviewReport.photoAfter || publicPreviewReport.photoBefore}
-                  alt={publicPreviewReport.title}
-                  className="w-full h-full object-cover"
-                />
+            {(publicPreviewReport.photoBefore || publicPreviewReport.photoAfter) && (
+              <div
+                className={`rounded-xl overflow-hidden bg-[#f2f3ff] border border-[#eaedff] ${
+                  publicPreviewReport.photoBefore && publicPreviewReport.photoAfter
+                    ? 'grid grid-cols-2 gap-0.5 h-36'
+                    : 'h-40'
+                }`}
+              >
+                {publicPreviewReport.photoBefore && (
+                  <div className="relative w-full h-full overflow-hidden">
+                    <img
+                      src={publicPreviewReport.photoBefore}
+                      alt={`Kondisi awal ${publicPreviewReport.title}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-1.5 left-1.5 bg-[#131b2e]/85 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                      Sebelum
+                    </span>
+                  </div>
+                )}
+                {publicPreviewReport.photoAfter && (
+                  <div className="relative w-full h-full overflow-hidden">
+                    <img
+                      src={publicPreviewReport.photoAfter}
+                      alt={`Hasil perbaikan ${publicPreviewReport.title}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-1.5 right-1.5 bg-[#005713] text-[#a3f69c] text-[9px] font-bold px-1.5 py-0.5 rounded">
+                      Sesudah
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {publicPreviewReport.assignedTeam && (
+              <div className="p-2.5 rounded-xl bg-[#f2f3ff] border border-[#cce5ff] text-[11px] space-y-0.5">
+                <div className="font-bold text-[#00355f] flex items-center justify-between gap-2">
+                  <span className="truncate">{publicPreviewReport.assignedTeam.name}</span>
+                  {publicPreviewReport.spkNumber && (
+                    <span className="font-mono text-[10px] shrink-0">
+                      {publicPreviewReport.spkNumber}
+                    </span>
+                  )}
+                </div>
+                {publicPreviewReport.assignedTeam.statusNote && (
+                  <p className="text-[#42474f] leading-snug">
+                    {publicPreviewReport.assignedTeam.statusNote}
+                  </p>
+                )}
               </div>
             )}
 
@@ -502,6 +683,42 @@ export const BerandaView: React.FC<BerandaViewProps> = ({
               <p className="text-[12px] text-[#42474f] bg-[#f2f3ff] p-3 rounded-xl leading-relaxed">
                 {publicPreviewReport.description}
               </p>
+            )}
+
+            {/* Live Timeline Stepper in Public Modal */}
+            {publicPreviewReport.timeline && publicPreviewReport.timeline.length > 0 && (
+              <div className="space-y-2 pt-1 border-t border-[#f2f3ff]">
+                <p className="text-[11px] font-bold text-[#131b2e]">Linimasa Penanganan</p>
+                <div className="space-y-1.5">
+                  {publicPreviewReport.timeline.map(step => (
+                    <div
+                      key={step.stage}
+                      className="flex items-start gap-2 text-[11px]"
+                    >
+                      <span
+                        className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] ${
+                          step.completed
+                            ? 'bg-[#005713] text-white'
+                            : step.active
+                            ? 'bg-[#006496] text-white'
+                            : 'bg-[#eaedff] text-[#727780]'
+                        }`}
+                      >
+                        {step.completed ? '✓' : step.stage}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-[#131b2e]">{step.title}</span>
+                          <span className="text-[10px] text-[#42474f] shrink-0">{step.time}</span>
+                        </div>
+                        <p className="text-[10.5px] text-[#42474f] leading-snug">
+                          {cleanLegacySawText(step.desc)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#f2f3ff]">

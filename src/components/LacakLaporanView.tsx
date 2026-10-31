@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ReportItem } from '../types';
+import { formatDistrictLabel } from '../utils/placeSearch';
 import { cleanLegacySawText, toScore100 } from '../utils/sawCalculator';
 
 interface LacakLaporanViewProps {
@@ -69,7 +70,8 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
       r =>
         r.id.toLowerCase().includes(q) ||
         r.placeName.toLowerCase().includes(q) ||
-        r.address.toLowerCase().includes(q)
+        r.address.toLowerCase().includes(q) ||
+        r.district.toLowerCase().includes(q)
     );
     if (found) {
       setSelectedReportId(found.id);
@@ -82,7 +84,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
   const handleShareStatus = () => {
     if (!activeReport) return;
     const shareUrl = window.location.href;
-    const shareText = `Pantau progres perbaikan fasilitas aksesibilitas di ${activeReport.placeName} Kebumen (${activeReport.id}): Status ${activeReport.statusLabel}`;
+    const shareText = `Pantau progres perbaikan fasilitas aksesibilitas di ${activeReport.placeName} - ${formatDistrictLabel(activeReport.district)} (${activeReport.id}): Status ${activeReport.statusLabel}`;
 
     if (typeof navigator !== 'undefined' && (navigator as any).share) {
       (navigator as any)
@@ -218,7 +220,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
           <span className="text-[10px] text-[#42474f] flex-shrink-0 font-semibold">
             Pilih Tiket:
           </span>
-          {reports.slice(0, 6).map(rep => (
+          {reports.map(rep => (
             <button
               key={rep.id}
               type="button"
@@ -261,7 +263,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
                 location_on
               </span>
               <span className="truncate">
-                Kec. {activeReport.district} • {activeReport.address}
+                {formatDistrictLabel(activeReport.district)} • {activeReport.address}
               </span>
             </div>
 

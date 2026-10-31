@@ -10,25 +10,32 @@ export interface PlaceSuggestion {
 }
 
 export const KNOWN_KEBUMEN_DISTRICTS = [
-  'Kebumen',
+  'Adimulyo',
+  'Alian',
+  'Ambal',
+  'Ayah',
+  'Bonorowo',
+  'Buayan',
+  'Buluspesantren',
   'Gombong',
   'Karanganyar',
-  'Pejagoan',
+  'Karanggayam',
+  'Karangsambung',
+  'Kebumen',
   'Klirong',
-  'Sruweng',
-  'Prembun',
   'Kutowinangun',
-  'Petanahan',
-  'Ayah',
-  'Rowokele',
-  'Sempor',
-  'Buayan',
-  'Adimulyo',
   'Kuwarasan',
-  'Alian',
-  'Puring',
-  'Ambal',
   'Mirit',
+  'Padureso',
+  'Pejagoan',
+  'Petanahan',
+  'Poncowarno',
+  'Prembun',
+  'Puring',
+  'Rowokele',
+  'Sadang',
+  'Sempor',
+  'Sruweng',
 ];
 
 const CURATED_KEBUMEN_PLACES: PlaceSuggestion[] = [
@@ -374,24 +381,299 @@ const CURATED_KEBUMEN_PLACES: PlaceSuggestion[] = [
   },
 ];
 
-export function detectKebumenDistrict(text: string): string | undefined {
+function stripDistrictPrefix(raw: string): string {
+  return raw
+    .replace(/^(?:kecamatan|kec\.|kemantren|kapanewon|distrik)\s+/i, '')
+    .trim();
+}
+
+function findKnownKebumenDistrict(text: string): string | undefined {
   if (!text) return undefined;
   const lower = text.toLowerCase();
-  // Check specific non-'Kebumen' districts first so "Kabupaten Kebumen" doesn't overshadow "Kecamatan Gombong"
+
+  // Check the 25 non-'Kebumen' sub-districts first so "Kabupaten Kebumen" doesn't overshadow them
   for (const dist of KNOWN_KEBUMEN_DISTRICTS) {
     if (dist === 'Kebumen') continue;
-    if (
-      lower.includes(`kecamatan ${dist.toLowerCase()}`) ||
-      lower.includes(`kec. ${dist.toLowerCase()}`) ||
-      lower.includes(dist.toLowerCase())
-    ) {
+    const escaped = dist.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    if (regex.test(lower)) {
+      // Guard 'Karanganyar' against Kabupaten Karanganyar (Surakarta area)
+      if (
+        dist === 'Karanganyar' &&
+        /\bkabupaten\s+karanganyar\b|\bkab\.\s*karanganyar\b/i.test(lower) &&
+        !/\bkebumen\b/i.test(lower)
+      ) {
+        continue;
+      }
       return dist;
     }
   }
-  if (lower.includes('kecamatan kebumen') || lower.includes('kec. kebumen') || lower.includes('bumirejo') || lower.includes('panjer') || lower.includes('kutosari')) {
-    return 'Kebumen';
+
+  if (
+    /\b(?:kecamatan|kec\.)\s+kebumen\b/i.test(lower) ||
+    /\b(?:bumirejo|panjer|kutosari|tamanwinangun|selang|kebumen)\b/i.test(lower)
+  ) {
+    if (
+      /\b(?:kecamatan|kec\.)\s+kebumen\b/i.test(lower) ||
+      /\b(?:bumirejo|panjer|kutosari|tamanwinangun)\b/i.test(lower)
+    ) {
+      return 'Kebumen';
+    }
   }
+
   return undefined;
+}
+
+/**
+ * Extracts either one of the 26 Kabupaten Kebumen sub-districts OR any external
+ * Kecamatan / Kabupaten / Kota in Indonesia from structured Nominatim fields and/or display address.
+ */
+export function extractDistrictFromAddress(
+  text: string,
+  structuredAddr?: Record<string, any>
+): string | undefined {
+  // 1. Structured Nominatim / geocoder address object
+  if (structuredAddr && typeof structuredAddr === 'object') {
+    const rawSub: string =
+      structuredAddr.city_district ||
+      structuredAddr.municipality ||
+      structuredAddr.district ||
+      structuredAddr.suburb ||
+      structuredAddr.town ||
+      '';
+    const rawRegency: string =
+      structuredAddr.county ||
+      structuredAddr.city ||
+      structuredAddr.regency ||
+      structuredAddr.state_district ||
+      '';
+
+    const cleanSub = stripDistrictPrefix(String(rawSub || ''));
+    const cleanRegencyRaw = String(rawRegency || '').trim();
+    const isKebumenRegency =
+      /\bkebumen\b/i.test(cleanRegencyRaw) ||
+      (!cleanRegencyRaw && /\bkabupaten\s+kebumen\b|\bkab\.\s*kebumen\b/i.test(text || ''));
+
+    if (isKebumenRegency) {
+      const matchedInSub = findKnownKebumenDistrict(cleanSub);
+      if (matchedInSub) return matchedInSub;
+
+      const matchedInFull = findKnownKebumenDistrict(
+        `${cleanSub} ${structuredAddr.village || ''} ${text || ''}`
+      );
+      if (matchedInFull) return matchedInFull;
+
+      if (cleanSub && !/^(kebumen|jawa|indonesia)$/i.test(cleanSub)) {
+        return cleanSub;
+      }
+      return 'Kebumen';
+    }
+
+    if (cleanRegencyRaw) {
+      const isKota = /^kota\s+/i.test(cleanRegencyRaw);
+      const regBase = cleanRegencyRaw
+        .replace(/^(?:kabupaten|kab\.|kota)\s+/i, '')
+        .replace(/\s+regency$/i, '')
+        .trim();
+      const regFormatted = isKota ? `Kota ${regBase}` : regBase;
+
+      if (cleanSub && !/^(jawa|indonesia)$/i.test(cleanSub)) {
+        if (cleanSub.toLowerCase() !== regBase.toLowerCase()) {
+          return `${cleanSub} (${regFormatted})`;
+        }
+        return isKota ? `Kota ${regBase}` : `${cleanSub} (Kab. ${regBase})`;
+      }
+      return isKota ? `Kota ${regBase}` : `Kab. ${regBase}`;
+    }
+  }
+
+  if (!text || !text.trim()) return undefined;
+  const trimmed = text.trim();
+
+  // 2. Check explicit non-Kebumen regency/city in plain text BEFORE Kebumen fallback
+  const regencyMatch = trimmed.match(
+    /\b(kabupaten|kab\.|kota)\s+([a-zA-Z\s'-]+?)(?=,|\.|;|\(|$|\s+jawa|\s+provinsi|\s+\d{5})/i
+  );
+  const explicitRegencyPrefix = regencyMatch ? regencyMatch[1].toLowerCase() : '';
+  const explicitRegencyName = regencyMatch ? regencyMatch[2].trim() : '';
+  const hasExplicitExternalRegency =
+    Boolean(explicitRegencyName) && !/\bkebumen\b/i.test(explicitRegencyName);
+
+  // 3. Explicit "Kecamatan X" / "Kec. X" / "Kemantren X" / "Kapanewon X"
+  const kecMatch = trimmed.match(
+    /\b(?:kecamatan|kec\.|kemantren|kapanewon|distrik)\s+([a-zA-Z\s'-]+?)(?=,|\.|;|\(|\/|$|\s+kabupaten|\s+kab\.|\s+kota)/i
+  );
+  if (kecMatch && kecMatch[1]) {
+    const extractedKec = stripDistrictPrefix(kecMatch[1]);
+    if (!hasExplicitExternalRegency) {
+      const knownKbm = KNOWN_KEBUMEN_DISTRICTS.find(
+        d => d.toLowerCase() === extractedKec.toLowerCase()
+      );
+      if (knownKbm) return knownKbm;
+    }
+    if (hasExplicitExternalRegency) {
+      const isKota = explicitRegencyPrefix.startsWith('kota');
+      const regLabel = isKota ? `Kota ${explicitRegencyName}` : explicitRegencyName;
+      if (extractedKec.toLowerCase() !== explicitRegencyName.toLowerCase()) {
+        return `${extractedKec} (${regLabel})`;
+      }
+      return isKota ? `Kota ${explicitRegencyName}` : `${extractedKec} (Kab. ${explicitRegencyName})`;
+    }
+    if (extractedKec) return extractedKec;
+  }
+
+  // 4. Comma-separated Nominatim display_name parsing (e.g. "..., Setrojenar, Buluspesantren, Kebumen, Jawa Tengah, Jawa, 54391, Indonesia")
+  const rawSegments = trimmed
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (rawSegments.length >= 3) {
+    const segs = [...rawSegments];
+    let strippedGeoTail = false;
+
+    while (segs.length > 0) {
+      const tail = segs[segs.length - 1];
+      if (
+        /^indonesia$/i.test(tail) ||
+        /^\d{5}$/.test(tail) ||
+        /^(?:jawa|java|sumatera|sumatra|kalimantan|sulawesi|bali|papua|maluku|nusa\s+tenggara.*)$/i.test(
+          tail
+        ) ||
+        /^(?:provinsi\s+.+|jawa\s+(?:tengah|barat|timur)|daerah\s+istimewa\s+yogyakarta|di\s+yogyakarta|dki\s+jakarta|daerah\s+khusus\s+ibukota\s+jakarta|banten|lampung|riau|jambi|bengkulu|aceh|(?:sumatera|kalimantan|sulawesi|maluku|nusa\s+tenggara|papua)\s+.+)$/i.test(
+          tail
+        )
+      ) {
+        if (!/^\d{5}$/.test(tail)) strippedGeoTail = true;
+        segs.pop();
+      } else {
+        break;
+      }
+    }
+
+    if (strippedGeoTail && segs.length >= 1) {
+      const regSeg = segs[segs.length - 1];
+      const subSeg = segs.length >= 2 ? stripDistrictPrefix(segs[segs.length - 2]) : '';
+      const isRoadLike = /^(?:jl\.|jalan\s|gg\.|gang\s|rt\s|rw\s|no\.|\d)/i.test(subSeg);
+
+      if (/\bkebumen\b/i.test(regSeg)) {
+        const matchedSub = findKnownKebumenDistrict(subSeg);
+        if (matchedSub) return matchedSub;
+        const matchedAny = findKnownKebumenDistrict(segs.join(', '));
+        if (matchedAny) return matchedAny;
+        if (subSeg && !isRoadLike && !/\bkebumen\b/i.test(subSeg)) {
+          return subSeg;
+        }
+        return 'Kebumen';
+      } else {
+        const isKota = /^kota\s+/i.test(regSeg);
+        const regBase = regSeg
+          .replace(/^(?:kabupaten|kab\.|kota)\s+/i, '')
+          .replace(/\s+regency$/i, '')
+          .trim();
+        const regFormatted = isKota ? `Kota ${regBase}` : regBase;
+
+        if (subSeg && !isRoadLike) {
+          if (subSeg.toLowerCase() !== regBase.toLowerCase()) {
+            return `${subSeg} (${regFormatted})`;
+          }
+          return isKota ? `Kota ${regBase}` : `${subSeg} (Kab. ${regBase})`;
+        }
+        return isKota ? `Kota ${regBase}` : `Kab. ${regBase}`;
+      }
+    }
+  }
+
+  // 5. Check known Kebumen sub-districts if no external regency was stated
+  if (!hasExplicitExternalRegency) {
+    const known = findKnownKebumenDistrict(trimmed);
+    if (known) return known;
+  }
+
+  // 6. Explicit external Kabupaten / Kota fallback
+  if (hasExplicitExternalRegency) {
+    const isKota = explicitRegencyPrefix.startsWith('kota');
+    return isKota ? `Kota ${explicitRegencyName}` : `Kab. ${explicitRegencyName}`;
+  }
+
+  return undefined;
+}
+
+export function detectKebumenDistrict(
+  text: string,
+  structuredAddr?: Record<string, any>
+): string | undefined {
+  return extractDistrictFromAddress(text, structuredAddr);
+}
+
+/**
+ * Formats a district / area name cleanly without redundant "Kec. Kab." prefixes.
+ */
+export function formatDistrictLabel(
+  district?: string,
+  style: 'short' | 'full' = 'short'
+): string {
+  const clean = (district || '').trim();
+  if (!clean) return style === 'full' ? 'Kecamatan Kebumen' : 'Kec. Kebumen';
+  if (/^(?:kec\.|kecamatan|kab\.|kabupaten|kota|wilayah|luar)\b/i.test(clean) || clean === 'Lainnya') {
+    return clean;
+  }
+  return style === 'full' ? `Kecamatan ${clean}` : `Kec. ${clean}`;
+}
+
+/**
+ * Automatically recovers & normalizes `report.district` when a report's `address` or `placeName`
+ * already read a real Kecamatan / Kabupaten (including outside Kebumen), but `district` was left
+ * at default `'Kebumen'`, `'Lainnya'`, or blank.
+ */
+export function resolveReportDistrict<
+  T extends {
+    district?: string;
+    address?: string;
+    placeName?: string;
+    coordinates?: { lat: number; lng: number };
+  }
+>(report: T): T {
+  if (!report) return report;
+  const rawDistrict = stripDistrictPrefix((report.district || '').trim());
+  const detectedFromAddress =
+    extractDistrictFromAddress(report.address || '') ||
+    extractDistrictFromAddress(report.placeName || '');
+
+  const isDefaultOrUnset =
+    !rawDistrict ||
+    rawDistrict.toLowerCase() === 'kebumen' ||
+    rawDistrict.toLowerCase() === 'lainnya';
+
+  let resolved = rawDistrict || 'Kebumen';
+
+  if (detectedFromAddress && isDefaultOrUnset) {
+    resolved = detectedFromAddress;
+  } else if (
+    isDefaultOrUnset &&
+    report.coordinates &&
+    (report.coordinates.lat < -7.88 ||
+      report.coordinates.lat > -7.38 ||
+      report.coordinates.lng < 109.32 ||
+      report.coordinates.lng > 109.88)
+  ) {
+    // Coordinates are clearly outside Kabupaten Kebumen's geographic bounds
+    if (detectedFromAddress) {
+      resolved = detectedFromAddress;
+    } else if (report.placeName?.trim()) {
+      resolved = `Luar Kebumen (${report.placeName.trim().slice(0, 24)})`;
+    } else {
+      resolved = 'Luar Kebumen';
+    }
+  }
+
+  if (resolved === report.district) {
+    return report;
+  }
+  return {
+    ...report,
+    district: resolved,
+  };
 }
 
 export function searchLocalKebumenPlaces(query: string): PlaceSuggestion[] {
@@ -407,7 +689,7 @@ export function searchLocalKebumenPlaces(query: string): PlaceSuggestion[] {
 
 /**
  * Searches places combining instant local Kebumen landmarks + live OpenStreetMap geocoding
- * (Nominatim with Kebumen bounding box priority + Photon fallback).
+ * (Nominatim with Kebumen viewbox priority while supporting all Indonesia locations + Photon fallback).
  */
 export async function searchPlacesHybrid(
   query: string,
@@ -426,12 +708,13 @@ export async function searchPlacesHybrid(
   const remoteResults: PlaceSuggestion[] = [];
 
   try {
-    // 1. Primary OpenStreetMap Nominatim query prioritized around Kabupaten Kebumen
-    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=id&viewbox=109.33,-7.42,109.86,-7.85&bounded=0&limit=8&accept-language=id&q=${encodeURIComponent(
-      biasedQuery
+    // 1. Primary OpenStreetMap Nominatim query using exact user query with Kebumen viewbox bias (bounded=0)
+    // so both Kebumen sub-districts AND places outside Kebumen resolve accurately with full addressdetails.
+    const primaryUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=id&viewbox=109.33,-7.42,109.86,-7.85&bounded=0&limit=8&accept-language=id&q=${encodeURIComponent(
+      trimmed
     )}`;
 
-    const res = await fetch(nominatimUrl, {
+    const res = await fetch(primaryUrl, {
       signal,
       headers: {
         Accept: 'application/json',
@@ -457,9 +740,7 @@ export async function searchPlacesHybrid(
             displayName.split(',')[0] ||
             trimmed;
 
-          const detectedDistrict = detectKebumenDistrict(
-            `${item.address?.municipality || ''} ${item.address?.suburb || ''} ${item.address?.village || ''} ${displayName}`
-          );
+          const detectedDistrict = extractDistrictFromAddress(displayName, item.address);
 
           remoteResults.push({
             id: `osm-${item.place_id}`,
@@ -477,26 +758,26 @@ export async function searchPlacesHybrid(
       }
     }
 
-    // If biased query returned nothing and user typed a broader place name, try exact query without appending 'Kebumen'
+    // If exact query returned nothing, try appending 'Kebumen' for local street/village shorthand
     if (remoteResults.length === 0 && !hasKebumenWord) {
-      const broadUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=id&viewbox=109.33,-7.42,109.86,-7.85&bounded=0&limit=6&accept-language=id&q=${encodeURIComponent(
-        trimmed
+      const biasedUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=id&viewbox=109.33,-7.42,109.86,-7.85&bounded=0&limit=6&accept-language=id&q=${encodeURIComponent(
+        biasedQuery
       )}`;
-      const broadRes = await fetch(broadUrl, { signal, headers: { Accept: 'application/json' } });
-      if (broadRes.ok) {
-        const broadData = await broadRes.json();
-        if (Array.isArray(broadData)) {
-          for (const item of broadData) {
+      const biasedRes = await fetch(biasedUrl, { signal, headers: { Accept: 'application/json' } });
+      if (biasedRes.ok) {
+        const biasedData = await biasedRes.json();
+        if (Array.isArray(biasedData)) {
+          for (const item of biasedData) {
             const lat = parseFloat(item.lat);
             const lng = parseFloat(item.lon);
             if (Number.isNaN(lat) || Number.isNaN(lng)) continue;
             const displayName: string = item.display_name || '';
             const primaryName: string = item.name || displayName.split(',')[0] || trimmed;
             remoteResults.push({
-              id: `osm-broad-${item.place_id}`,
+              id: `osm-kbm-${item.place_id}`,
               name: primaryName,
               address: displayName,
-              district: detectKebumenDistrict(displayName),
+              district: extractDistrictFromAddress(displayName, item.address),
               lat: Number(lat.toFixed(5)),
               lng: Number(lng.toFixed(5)),
               categoryLabel: 'Lokasi Peta',
@@ -513,7 +794,7 @@ export async function searchPlacesHybrid(
     // 2. Fallback to Photon Komoot OpenStreetMap geocoder if Nominatim fails
     try {
       const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(
-        biasedQuery
+        trimmed
       )}&lat=-7.6748&lon=109.6575&limit=6`;
       const pRes = await fetch(photonUrl, { signal });
       if (pRes.ok) {
@@ -533,7 +814,11 @@ export async function searchPlacesHybrid(
               id: `photon-${props.osm_id || `${lat}-${lng}`}`,
               name,
               address: addrParts || name,
-              district: detectKebumenDistrict(`${addrParts} ${name}`),
+              district: extractDistrictFromAddress(`${addrParts}, ${name}`, {
+                district: props.district,
+                city: props.city,
+                county: props.county,
+              }),
               lat,
               lng,
               categoryLabel: 'Peta OSM',
@@ -590,9 +875,7 @@ export async function reverseGeocodePoint(
       addr.village ||
       undefined;
     const fullAddress: string | undefined = data?.display_name || undefined;
-    const district = detectKebumenDistrict(
-      `${addr.municipality || ''} ${addr.suburb || ''} ${addr.city_district || ''} ${addr.village || ''} ${fullAddress || ''}`
-    );
+    const district = extractDistrictFromAddress(fullAddress || '', addr);
     return { roadOrPlace, fullAddress, district };
   } catch {
     return null;

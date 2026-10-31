@@ -160,7 +160,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // Handle PATCH /api/reports (Update report status / timeline)
   if (req.method === 'PATCH') {
     const body = await parseBody(req);
-    const { id, ...updates } = body;
+    const { id: rawId, _id, _fullReport, ...updates } = body;
+    const id = typeof rawId === 'string' ? rawId.trim() : rawId;
 
     if (!id) {
       res.statusCode = 400;
@@ -168,7 +169,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
 
-    updateInMemoryReport(id, updates);
+    const memUpdated = updateInMemoryReport(id, updates);
+    if (!memUpdated && _fullReport && typeof _fullReport === 'object') {
+      const { _id: _ignoredId, ...cleanFull } = _fullReport;
+      insertInMemoryReport({ ...cleanFull, ...updates, id });
+    }
 
     if (!configured) {
       res.statusCode = 200;
@@ -184,13 +189,23 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     try {
       const collection = await getReportsCollection();
-      await collection.updateOne({ id }, { $set: updates });
+      const updateResult = await collection.updateOne({ id }, { $set: updates });
+
+      if (updateResult.matchedCount === 0 && _fullReport && typeof _fullReport === 'object') {
+        const { _id: _ignoredMongoId, ...cleanFull } = _fullReport;
+        await collection.updateOne(
+          { id },
+          { $set: { ...cleanFull, ...updates, id } },
+          { upsert: true }
+        );
+      }
 
       res.statusCode = 200;
       res.end(
         JSON.stringify({
           success: true,
           source: 'mongodb',
+          matchedCount: updateResult.matchedCount,
           message: `Laporan ${id} berhasil diperbarui di MongoDB`,
           data: { id, ...updates },
         })
@@ -202,6 +217,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         JSON.stringify({
           success: true,
           source: 'local_fallback',
+          error: err.message,
           data: { id, ...updates },
         })
       );

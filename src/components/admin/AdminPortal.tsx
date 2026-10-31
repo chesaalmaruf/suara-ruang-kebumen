@@ -28,6 +28,11 @@ import {
 import { FacilityCategory, ReportItem } from '../../types';
 import { DatabaseStatus } from '../../services/reportService';
 import { compressImageFile, formatCurrentWibTime } from '../../utils/imageHelper';
+import {
+  KNOWN_KEBUMEN_DISTRICTS,
+  formatDistrictLabel,
+  resolveReportDistrict,
+} from '../../utils/placeSearch';
 import { cleanLegacySawText, toScore100 } from '../../utils/sawCalculator';
 import { LeafletMapView } from '../LeafletMapView';
 
@@ -143,9 +148,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [selectedDistrict, setSelectedDistrict] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [mapCategoryFilter, setMapCategoryFilter] = useState<'all' | FacilityCategory>('all');
-  const [sawQueueTab, setSawQueueTab] = useState<'antrean' | 'prioritas' | 'dikerjakan'>(
-    'prioritas'
-  );
+  const [sawQueueTab, setSawQueueTab] = useState<
+    'antrean' | 'prioritas' | 'dikerjakan' | 'selesai'
+  >('prioritas');
   const [taskFilter, setTaskFilter] = useState<
     'all' | 'submitted' | 'in_progress' | 'completed'
   >('all');
@@ -168,20 +173,69 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setTimeout(() => setToastMessage(null), 3200);
   };
 
-  // Unique districts present in live reports
-  const availableDistricts = useMemo(() => {
-    const set = new Set<string>();
-    reports.forEach(r => {
-      if (r.district?.trim()) set.add(r.district.trim());
+  // Normalize districts on all incoming reports (recovers real Kecamatan/Wilayah from address when stuck on default)
+  const normalizedReports = useMemo(
+    () => reports.map(r => resolveReportDistrict(r)),
+    [reports]
+  );
+
+  // Reported districts (with live counts, including outside Kebumen) + remaining official 26 Kebumen sub-districts
+  const { availableDistricts, reportedDistrictCounts, unrepresentedKebumenDistricts } = useMemo(() => {
+    const counts = new Map<string, number>();
+    normalizedReports.forEach(r => {
+      const d = (r.district || 'Kebumen').trim();
+      if (d) {
+        counts.set(d, (counts.get(d) || 0) + 1);
+      }
     });
-    return Array.from(set).sort();
-  }, [reports]);
+
+    const reported = Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'id'));
+
+    const lowerReported = new Set(reported.map(item => item.name.toLowerCase()));
+    const remaining = KNOWN_KEBUMEN_DISTRICTS.filter(
+      d => !lowerReported.has(d.toLowerCase())
+    );
+
+    return {
+      availableDistricts: reported.map(item => item.name),
+      reportedDistrictCounts: reported,
+      unrepresentedKebumenDistricts: remaining,
+    };
+  }, [normalizedReports]);
+
+  const renderDistrictFilterOptions = () => (
+    <>
+      <option value="ALL">Semua Kecamatan / Wilayah ({normalizedReports.length})</option>
+      {reportedDistrictCounts.length > 0 && (
+        <optgroup label="Wilayah dengan Laporan Masuk">
+          {reportedDistrictCounts.map(d => (
+            <option key={d.name} value={d.name}>
+              {formatDistrictLabel(d.name)} ({d.count})
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {unrepresentedKebumenDistricts.length > 0 && (
+        <optgroup label="Kecamatan Kab. Kebumen Lainnya">
+          {unrepresentedKebumenDistricts.map(d => (
+            <option key={d} value={d}>
+              Kec. {d} (0)
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
 
   // District + Search filtered reports
   const filteredReports = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return reports.filter(r => {
-      const matchDistrict = selectedDistrict === 'ALL' || r.district === selectedDistrict;
+    return normalizedReports.filter(r => {
+      const matchDistrict =
+        selectedDistrict === 'ALL' ||
+        r.district.trim().toLowerCase() === selectedDistrict.trim().toLowerCase();
       if (!matchDistrict) return false;
       if (!q) return true;
       return (
@@ -194,7 +248,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         (r.spkNumber && r.spkNumber.toLowerCase().includes(q))
       );
     });
-  }, [reports, selectedDistrict, searchQuery]);
+  }, [normalizedReports, selectedDistrict, searchQuery]);
 
   // Map category-filtered reports
   const mapReports = useMemo(() => {
@@ -202,11 +256,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return filteredReports.filter(r => r.facilityCategory === mapCategoryFilter);
   }, [filteredReports, mapCategoryFilter]);
 
-  // Live statistics
+  // Live statistics (completed tickets are excluded from active severity counts)
   const totalActive = filteredReports.filter(r => r.status !== 'completed').length;
   const needVerification = filteredReports.filter(r => r.status === 'submitted').length;
   const criticalCount = filteredReports.filter(
-    r => r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85)
+    r =>
+      r.status !== 'completed' &&
+      (r.severity === 'critical' || (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.85))
   ).length;
   const inProgressCount = filteredReports.filter(
     r => r.status === 'in_progress' || r.status === 'verified'
@@ -214,17 +270,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const completedCount = filteredReports.filter(r => r.status === 'completed').length;
   const moderateCount = filteredReports.filter(
     r =>
-      r.severity === 'moderate' ||
-      (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.65 && r.sawScores.totalSaw < 0.85)
+      r.status !== 'completed' &&
+      (r.severity === 'moderate' ||
+        (r.sawScores?.totalSaw && r.sawScores.totalSaw >= 0.65 && r.sawScores.totalSaw < 0.85))
   ).length;
   const mildCount = filteredReports.filter(
-    r => r.severity === 'mild' || (r.sawScores?.totalSaw && r.sawScores.totalSaw < 0.65)
+    r =>
+      r.status !== 'completed' &&
+      (r.severity === 'mild' || (r.sawScores?.totalSaw && r.sawScores.totalSaw < 0.65))
   ).length;
 
-  // Dynamic completion per district
+  // Dynamic completion per district (shows up to 10 districts including external locations)
   const districtCompletion = useMemo(() => {
     const map = new Map<string, { total: number; done: number }>();
-    reports.forEach(r => {
+    normalizedReports.forEach(r => {
       const d = r.district || 'Kebumen';
       const cur = map.get(d) || { total: 0, done: 0 };
       map.set(d, {
@@ -240,8 +299,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         pct: Math.round((v.done / v.total) * 100),
       }))
       .sort((a, b) => b.total - a.total)
-      .slice(0, 6);
-  }, [reports]);
+      .slice(0, 10);
+  }, [normalizedReports]);
 
   // Real spatial clusters based on Haversine distance
   const radiusMeters = geofenceRadius === '10m' ? 10 : geofenceRadius === '20m' ? 20 : 50;
@@ -283,13 +342,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         r => r.status === 'in_progress' || r.status === 'verified'
       );
     }
+    if (sawQueueTab === 'selesai') {
+      return filteredReports.filter(r => r.status === 'completed');
+    }
     return filteredReports.filter(r => r.status !== 'completed');
   }, [filteredReports, sawQueueTab]);
 
   // Active target report for Inspector, Disposition & Publication form
   const activeDispositionReport = useMemo(() => {
-    const found = filteredReports.find(r => r.id === selectedTicketId);
-    if (found) return found;
+    if (selectedTicketId) {
+      const foundInFiltered = filteredReports.find(r => r.id === selectedTicketId);
+      if (foundInFiltered) return foundInFiltered;
+      const foundGlobal = normalizedReports.find(r => r.id === selectedTicketId);
+      if (foundGlobal && selectedDistrict === 'ALL') return foundGlobal;
+    }
     return (
       filteredReports.find(r => r.status === 'in_progress') ||
       filteredReports.find(r => r.status === 'verified') ||
@@ -297,7 +363,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       filteredReports[0] ||
       null
     );
-  }, [filteredReports, selectedTicketId]);
+  }, [filteredReports, normalizedReports, selectedDistrict, selectedTicketId]);
 
   // Filtered tasks in Tab 3
   const filteredTasks = useMemo(() => {
@@ -379,6 +445,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     onProcessReport(report.id, {
       status: 'verified',
       statusLabel: 'Terverifikasi DPUPR',
+      district: report.district,
       verifiedAt: now,
       verifiedBy: 'Pengawas Dinas PUPR Kebumen',
       timeline: updatedTimeline,
@@ -421,6 +488,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     onProcessReport(report.id, {
       status: 'in_progress',
       statusLabel: 'Sedang Dikerjakan TRC',
+      district: report.district,
       spkNumber: spkCode,
       verifiedAt: report.verifiedAt || now,
       assignedTeam: {
@@ -445,11 +513,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       return;
     }
     onProcessReport(report.id, {
+      status: 'in_progress',
+      statusLabel: 'Sedang Dikerjakan TRC',
+      district: report.district,
       assignedTeam: {
         ...report.assignedTeam,
         progressPercent: percent,
       },
     });
+    setSelectedTicketId(report.id);
     showToast(`Progres lapangan tiket ${report.id} diperbarui menjadi ${percent}%.`);
   };
 
@@ -495,6 +567,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     onProcessReport(report.id, {
       status: 'completed',
       statusLabel: 'Tuntas 100% (Terverifikasi)',
+      district: report.district,
       completedAt: now,
       verifiedBy: 'Dinas PUPR Kabupaten Kebumen',
       photoAfter: finalAfterPhoto,
@@ -518,6 +591,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       timeline: updatedTimeline,
     });
 
+    setSelectedTicketId(report.id);
     setUploadedAfterPhoto(null);
     setFieldNote('');
     setIsMobileInspectorOpen(false);
@@ -729,9 +803,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500">Lokasi & Kecamatan</span>
+              <span className="text-slate-500">Lokasi & Wilayah</span>
               <span className="font-medium text-slate-800 text-right truncate max-w-[220px]">
-                Kec. {report.district} · {report.address}
+                {formatDistrictLabel(report.district)} · {report.address}
               </span>
             </div>
             {report.spkNumber && (
@@ -1028,12 +1102,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onChange={e => setSelectedDistrict(e.target.value)}
               className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-[#00355f]"
             >
-              <option value="ALL">Semua Kecamatan ({reports.length})</option>
-              {availableDistricts.map(d => (
-                <option key={d} value={d}>
-                  Kecamatan {d}
-                </option>
-              ))}
+              {renderDistrictFilterOptions()}
             </select>
           </div>
         </div>
@@ -1137,7 +1206,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   htmlFor="drawer-district-filter"
                   className="block text-xs font-semibold text-slate-700"
                 >
-                  Filter Kecamatan
+                  Filter Kecamatan / Wilayah
                 </label>
                 <select
                   id="drawer-district-filter"
@@ -1145,12 +1214,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   onChange={e => setSelectedDistrict(e.target.value)}
                   className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800"
                 >
-                  <option value="ALL">Semua Kecamatan ({reports.length})</option>
-                  {availableDistricts.map(d => (
-                    <option key={d} value={d}>
-                      Kecamatan {d}
-                    </option>
-                  ))}
+                  {renderDistrictFilterOptions()}
                 </select>
               </div>
             </div>
@@ -1282,12 +1346,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   onChange={e => setSelectedDistrict(e.target.value)}
                   className="w-full sm:w-auto h-10 px-3 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-[#00355f]"
                 >
-                  <option value="ALL">Semua Kecamatan ({reports.length})</option>
-                  {availableDistricts.map(d => (
-                    <option key={d} value={d}>
-                      Kec. {d}
-                    </option>
-                  ))}
+                  {renderDistrictFilterOptions()}
                 </select>
               </div>
 
@@ -1396,6 +1455,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           { id: 'prioritas', label: `Prioritas (${totalActive})` },
                           { id: 'antrean', label: `Baru (${needVerification})` },
                           { id: 'dikerjakan', label: `Diproses (${inProgressCount})` },
+                          { id: 'selesai', label: `Tuntas (${completedCount})` },
                         ].map(tab => (
                           <button
                             key={tab.id}
@@ -1445,7 +1505,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                     {rep.id}
                                   </span>
                                   <span aria-hidden="true">·</span>
-                                  <span>Kec. {rep.district}</span>
+                                  <span>{formatDistrictLabel(rep.district)}</span>
                                   <span aria-hidden="true">·</span>
                                   <span className="tabular-nums">{rep.createdAt}</span>
                                 </div>
@@ -1680,7 +1740,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <div key={d.district} className="space-y-1.5">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="font-medium text-slate-800 truncate">
-                                  Kec. {d.district}
+                                  {formatDistrictLabel(d.district)}
                                 </span>
                                 <span className="font-mono tabular-nums text-slate-600">
                                   {d.done}/{d.total} ({d.pct}%)
@@ -1847,7 +1907,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 {clust.placeName}
                               </h3>
                               <p className="text-[11px] text-slate-500">
-                                Kec. {clust.district} · {clust.items.length} tiket berdekatan
+                                {formatDistrictLabel(clust.district)} · {clust.items.length} tiket berdekatan
                               </p>
                             </div>
                             <div className="text-right font-mono tabular-nums">
@@ -2000,7 +2060,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 </td>
 
                                 <td className="py-3.5 px-4 font-medium text-slate-700 whitespace-nowrap">
-                                  Kec. {task.district}
+                                  {formatDistrictLabel(task.district)}
                                 </td>
 
                                 <td className="py-3.5 px-4 text-right font-mono tabular-nums">
@@ -2159,7 +2219,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 {task.title}
                               </h3>
                               <p className="text-xs text-slate-500 mt-0.5">
-                                Kec. {task.district} · {task.address}
+                                {formatDistrictLabel(task.district)} · {task.address}
                               </p>
                             </div>
 
@@ -2284,8 +2344,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <p className="text-xs text-slate-500">
                     Wilayah:{' '}
                     {selectedDistrict === 'ALL'
-                      ? 'Seluruh Kecamatan Kabupaten Kebumen'
-                      : `Kecamatan ${selectedDistrict}`}{' '}
+                      ? 'Seluruh Kecamatan & Wilayah Terlapor'
+                      : formatDistrictLabel(selectedDistrict, 'full')}{' '}
                     · Sumber data tersinkronisasi dari pelaporan warga
                   </p>
                 </div>
@@ -2372,7 +2432,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <div key={log.id} className="p-4 sm:px-5 space-y-1">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                             <span className="font-mono tabular-nums font-semibold text-[#00355f]">
-                              {log.reportId} · Kec. {log.district} · Skor {toScore100(log.saw)}/100
+                              {log.reportId} · {formatDistrictLabel(log.district)} · Skor {toScore100(log.saw)}/100
                             </span>
                             <span className="tabular-nums">{log.time}</span>
                           </div>
@@ -2422,7 +2482,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <div>
                               <h4 className="text-sm font-bold text-slate-900">{doneRep.title}</h4>
                               <p className="text-xs text-slate-500">
-                                Kec. {doneRep.district} · {doneRep.placeName}
+                                {formatDistrictLabel(doneRep.district)} · {doneRep.placeName}
                               </p>
                             </div>
 
