@@ -13,7 +13,6 @@ import {
 } from '../utils/placeSearch';
 import { getOrCreateDeviceId } from '../services/reportService';
 import {
-  CATEGORY_CRITICAL_SUBTEXT,
   CATEGORY_LABELS,
   CATEGORY_OBSTACLE_OPTIONS,
   calculateRawCriteria,
@@ -415,12 +414,12 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
       severity,
       severityLabel:
         severity === 'critical'
-          ? 'Sangat berat atau membahayakan'
+          ? 'Sangat berat, tidak berfungsi atau membahayakan'
           : severity === 'severe'
-          ? 'Berat, sulit dilewati'
+          ? 'Berat, sulit digunakan atau diakses'
           : severity === 'moderate'
-          ? 'Sedang, cukup mengganggu'
-          : 'Ringan, masih mudah dilewati',
+          ? 'Sedang, cukup menghambat aktivitas'
+          : 'Ringan, masih dapat digunakan',
       impactedGroups,
       description: cleanNotes,
       photoBefore: photoUrl,
@@ -1230,27 +1229,27 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
               {[
                 {
                   id: 'mild',
-                  label: 'Ringan, masih mudah dilewati',
+                  label: 'Ringan, masih dapat digunakan',
                   dotColor: 'bg-[#a3f69c]',
-                  sub: 'Bisa dilalui mandiri dengan sedikit kehati-hatian',
+                  sub: 'Kendala kecil, fasilitas tetap dapat diakses mandiri dengan sedikit penyesuaian',
                 },
                 {
                   id: 'moderate',
-                  label: 'Sedang, cukup mengganggu',
+                  label: 'Sedang, cukup menghambat aktivitas',
                   dotColor: 'bg-[#7fc5fd]',
-                  sub: 'Memperlambat mobilitas pejalan kaki, difabel & lansia',
+                  sub: 'Mengurangi kenyamanan dan kelancaran penggunaan fasilitas bagi pengguna',
                 },
                 {
                   id: 'severe',
-                  label: 'Berat, sulit dilewati',
+                  label: 'Berat, sulit digunakan atau diakses',
                   dotColor: 'bg-[#ffdad6]',
-                  sub: 'Membutuhkan bantuan orang lain untuk dapat melintas',
+                  sub: 'Fungsi fasilitas sangat terganggu sehingga membutuhkan bantuan orang lain',
                 },
                 {
                   id: 'critical',
-                  label: 'Sangat berat atau membahayakan keselamatan',
+                  label: 'Sangat berat, tidak berfungsi atau membahayakan',
                   dotColor: 'bg-[#ba1a1a]',
-                  sub: CATEGORY_CRITICAL_SUBTEXT[category],
+                  sub: 'Fasilitas tidak dapat diakses sama sekali atau berisiko terhadap keselamatan',
                 },
               ].map(lvl => {
                 const isSelected = severity === lvl.id;
