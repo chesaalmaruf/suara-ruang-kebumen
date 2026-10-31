@@ -839,18 +839,6 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                 <span className="material-symbols-outlined text-[#006496] text-[18px]">map</span>
                 Titik Koordinat Peta
               </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setFullscreenQuery(placeName);
-                  setIsMapExpanded(true);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#00355f] hover:bg-[#006496] text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all"
-              >
-                <span className="material-symbols-outlined text-[14px]">open_in_full</span>
-                <span>Lebarkan Peta</span>
-              </button>
             </div>
 
             {pinStatus === 'auto_pinned' && (
