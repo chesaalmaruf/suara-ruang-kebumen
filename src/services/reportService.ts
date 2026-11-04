@@ -1,6 +1,6 @@
 import { ReportItem, ReportStatus } from '../types';
 import { LEGACY_DUMMY_IDS } from '../data/initialData';
-import { rankReportsBySaw } from '../utils/sawCalculator';
+import { computeSawScore, rankReportsBySaw } from '../utils/sawCalculator';
 import { resolveReportDistrict } from '../utils/placeSearch';
 
 const OLD_STORAGE_KEY = 'suara_ruang_reports_kebumen_v2';
@@ -26,7 +26,19 @@ const STATUS_STAGE_WEIGHT: Record<ReportStatus, number> = {
 function normalizeReportsList(items: ReportItem[]): ReportItem[] {
   return items
     .filter((r): r is ReportItem => Boolean(r && r.id && !LEGACY_DUMMY_IDS.includes(r.id)))
-    .map(r => resolveReportDistrict(r));
+    .map(r => {
+      const resolved = resolveReportDistrict(r);
+      if (resolved.sawScores) {
+        return {
+          ...resolved,
+          sawScores: {
+            ...resolved.sawScores,
+            totalSaw: computeSawScore(resolved.sawScores),
+          },
+        };
+      }
+      return resolved;
+    });
 }
 
 /**
@@ -97,8 +109,17 @@ function mergeReportVersions(
     ? { ...serverRep, ...localRep }
     : { ...localRep, ...serverRep };
 
+  const freshSawScores = serverRep.sawScores
+    ? {
+        ...serverRep.sawScores,
+        totalSaw: computeSawScore(serverRep.sawScores),
+        rank: serverRep.sawScores.rank ?? localRep.sawScores?.rank,
+      }
+    : base.sawScores;
+
   return resolveReportDistrict({
     ...base,
+    sawScores: freshSawScores,
     photoBefore: base.photoBefore || serverRep.photoBefore || localRep.photoBefore || '',
     photoDuring: base.photoDuring || serverRep.photoDuring || localRep.photoDuring,
     photoAfter: base.photoAfter || serverRep.photoAfter || localRep.photoAfter,

@@ -165,11 +165,11 @@ Dirancang dengan pendekatan *mobile-first* (lebar optimal kolom tengah `max-w-md
      - Pemilihan **Kecamatan / Wilayah** (26 kecamatan resmi Kebumen, deteksi otomatis wilayah luar Kebumen dari peta, atau opsi isi manual `Lainnya`).
      - Input **Alamat Lengkap / Patokan** yang terisi otomatis dari hasil *geocoding* atau *reverse geocoding* saat pin digeser/diketuk di peta, namun tetap bebas disunting manual.
      - **Peta Interaktif & Mode Layar Penuh**: Pengguna dapat memperbesar peta ke layar penuh, mencari lokasi langsung di atas peta layar penuh, menggeser pin `📍`, atau mengaktifkan GPS.
-   - **Bagian 2 — Informasi Hambatan**:
-     - **A. Kategori Ruang atau Fasilitas**: 5 pilihan kategori ruang (`Ruang Terbuka & Jalur Pedestrian`, `Gedung Layanan & Fasilitas Umum`, `Transportasi & Penyeberangan`, `Lingkungan & Gang Permukiman`, `Fasilitas Lainnya`).
-     - **B. Jenis Hambatan Aksesibilitas**: Daftar hambatan berubah secara kontekstual mengikuti Kategori A, ditambah opsi tetap **Pengaduan lain** yang membuka kolom input teks manual.
-     - **C. Tingkat Keparahan**: 4 tingkatan universal (`mild`, `moderate`, `severe`, `critical`) yang relevan untuk segala bentuk fasilitas fisik maupun layanan gedung.
-     - **D. Kelompok yang Terdampak**: Pilihan majemuk (*multi-select*) untuk `Penyandang disabilitas`, `Lansia`, `Anak-anak`, `Masyarakat umum`, dan `Kelompok rentan lainnya`.
+   - **Bagian 2 — Informasi Gangguan & Hambatan**:
+     - **A. Kategori Ruang atau Infrastruktur**: 5 pilihan kategori ruang (`Jalan Raya, Lalu Lintas & Transportasi`, `Ruang Publik, Taman & Jalur Pejalan Kaki`, `Gedung Layanan & Fasilitas Umum`, `Jalan Lingkungan & Kawasan Permukiman`, `Infrastruktur & Fasilitas Lainnya`).
+     - **B. Jenis Gangguan atau Hambatan**: Dilengkapi filter cakupan (`Semua`, `Umum & Jalan`, `Ramah Difabel`) yang menampilkan daftar gangguan lalu lintas, infrastruktur umum, maupun aksesibilitas difabel secara kontekstual mengikuti Kategori A, ditambah opsi tetap **Pengaduan lain** untuk input teks manual.
+     - **C. Tingkat Keparahan**: 4 tingkatan universal (`mild`, `moderate`, `severe`, `critical`) yang relevan untuk segala bentuk infrastruktur jalan, rambu, maupun fasilitas gedung.
+     - **D. Kelompok yang Terdampak**: Pilihan majemuk (*multi-select*) untuk `Masyarakat umum`, `Pengendara / pengguna jalan`, `Pejalan kaki`, `Penyandang disabilitas`, `Lansia`, `Anak-anak`, dan `Kelompok rentan lainnya` (otomatis merekomendasikan kelompok awal yang relevan saat jenis gangguan dipilih, dan bebas diubah pengguna).
    - **Bagian 3 — Bukti dan Keterangan**:
      - Unggah foto langsung dari kamera ponsel (`capture="environment"`) maupun galeri foto, dikompresi otomatis sebelum dikirim.
      - Kolom deskripsi kondisi hambatan dengan tombol **Dikte Suara** serta tombol **Bacakan Ringkasan** di bilah aksi bawah.
@@ -204,133 +204,165 @@ Komponen peta tunggal yang melayani baik mode penentuan titik (*Picker Mode*) ma
 ## 4. Rincian Lengkap Algoritma Sistem
 
 ### 4.1 Algoritma SPK Simple Additive Weighting (SAW)
-Diimplementasikan pada `src/utils/sawCalculator.ts`, metode **Simple Additive Weighting (SAW)** digunakan untuk menentukan urutan prioritas penanganan laporan secara objektif berdasarkan penjumlahan terbobot dari rating kinerja yang telah dinormalisasi pada setiap alternatif laporan.
+Diimplementasikan pada `src/utils/sawCalculator.ts`, metode **Simple Additive Weighting (SAW)** digunakan untuk menentukan urutan prioritas penanganan laporan secara objektif berdasarkan penjumlahan terbobot dari rating kinerja yang telah dinormalisasi pada setiap alternatif laporan—baik untuk gangguan infrastruktur/lalu lintas masyarakat umum maupun hambatan aksesibilitas difabel.
 
 #### A. Kriteria dan Bobot Keputusan ($W$)
 Seluruh empat kriteria bersifat **Benefit** (semakin tinggi nilai dampak/risiko pada suatu kriteria, semakin tinggi urgensi penanganannya):
 
 | Kode | Nama Kriteria Penilaian | Bobot ($w_j$) | Persentase | Sumber Input Formulir Warga |
 | :--- | :--- | :---: | :---: | :--- |
-| **$C_1$** | Tingkat Bahaya terhadap Keselamatan | `0.35` | **35%** | Tingkat Keparahan (C) + Faktor Bahaya Jenis Hambatan (B) |
-| **$C_2$** | Dampak terhadap Aksesibilitas Difabel | `0.30` | **30%** | Basis Aksesibilitas Jenis Hambatan (B) + Delta Keparahan (C) |
-| **$C_3$** | Jumlah Pengguna & Fasilitas Publik Terdampak | `0.25` | **25%** | Kategori Ruang/Fasilitas (A) + Jumlah Kelompok Rentan (D) |
-| **$C_4$** | Tingkat Kerusakan / Keparahan Fisik | `0.10` | **10%** | Tingkat Keparahan (C) $\times$ Skala Fisik Jenis Hambatan (B) |
+| **$C_1$** | Tingkat Bahaya Keselamatan Publik & Pengguna Jalan | `0.35` | **35%** | Tingkat Keparahan (C) + Faktor Bahaya Jenis Gangguan (B) |
+| **$C_2$** | Dampak Mobilitas & Aksesibilitas Inklusif | `0.30` | **30%** | Basis Akses/Mobilitas Gangguan (B) + Delta Keparahan (C) + Bonus Kerentanan (D) |
+| **$C_3$** | Cakupan Pengguna Jalan & Vitalitas Ruang | `0.25` | **25%** | Kategori Ruang/Infrastruktur (A) + Jumlah Kelompok Terdampak (D) |
+| **$C_4$** | Tingkat Kerusakan Fisik / Teknis Infrastruktur | `0.10` | **10%** | Tingkat Keparahan (C) $\times$ Skala Fisik Jenis Gangguan (B) |
 | **Total** | **Akumulasi Bobot Keputusan** | **`1.00`** | **100%** | — |
 
-#### B. Parameter Konfigurasi Jenis Hambatan & Penanganan Seragam "Pengaduan lain"
-Setiap opsi pada **B. Jenis Hambatan Aksesibilitas** memiliki tiga parameter terkalibrasi:
-- `c2BaseAccess`: Dampak dasar terhadap kemandirian akses difabel (`0.80` – `0.95`).
-- `c1SafetyBoost`: Penyesuaian risiko bahaya kecelakaan langsung (`-0.02` hingga `+0.07`).
-- `c4PhysicalScale`: Pengali kerusakan fisik struktural permanen vs penghalang non-permanen (`0.82` – `1.06`).
+#### B. Katalog Parameter Jenis Gangguan (Umum & Inklusif) serta Aturan "Pengaduan lain"
+Setiap opsi pada **B. Jenis Gangguan atau Hambatan** memiliki atribut cakupan (`scope: 'umum' | 'inklusif'`) dan tiga parameter terkalibrasi:
+- `c2BaseAccess`: Dampak dasar terhadap kelancaran mobilitas warga & aksesibilitas pengguna (`0.74` – `0.95`).
+- `c1SafetyBoost`: Penyesuaian risiko kecelakaan / bahaya keselamatan langsung (`-0.02` hingga `+0.08`).
+- `c4PhysicalScale`: Pengali tingkat kerusakan fisik/elektrikal/struktural permanen vs penghalang non-permanen (`0.82` – `1.08`).
 
 **Aturan Khusus Input Manual ("Pengaduan lain"):**
 Apabila pengguna memilih opsi **Pengaduan lain** (`isCustomObstacle === true`) dan mengetikkan keluhan secara manual, fungsi `calculateRawCriteria` **mengabaikan kata kunci pada teks manual** dan selalu menetapkan konstanta seragam `CUSTOM_OBSTACLE_CONFIG`:
-- `c2BaseAccess = 0.88`
-- `c1SafetyBoost = 0.03`
+- `c2BaseAccess = 0.86`
+- `c1SafetyBoost = +0.03`
 - `c4PhysicalScale = 1.00`
 
-Dengan demikian, **apapun kalimat yang diketik pengguna pada kolom manual akan menghasilkan bobot dasar hambatan yang 100% setara dan adil** (variasi skor hanya ditentukan oleh pilihan Kategori Ruang, Tingkat Keparahan, dan Kelompok Terdampak).
+Ringkasan representatif katalog 53 jenis gangguan/hambatan terkalibrasi:
 
-Tabel parameter untuk seluruh opsi hambatan terdefinisi:
-
-| Kategori Ruang | Jenis Hambatan | `c2BaseAccess` | `c1SafetyBoost` | `c4PhysicalScale` |
-| :--- | :--- | :---: | :---: | :---: |
-| **Ruang Terbuka (`public_space`)** | Trotoar rusak, berlubang, atau amblas | `0.84` | `+0.04` | `1.05` |
-| | Guiding block terputus / mengelupas | `0.92` | `+0.03` | `1.00` |
-| | Ramp trotoar tidak ada atau terlalu curam | `0.94` | `+0.03` | `1.00` |
-| | Lubang drainase / penutup selokan terbuka | `0.88` | `+0.07` | `1.06` |
-| | Jalur terhalang bollard sempit, tiang, atau PKL/parkir | `0.90` | `+0.01` | `0.85` |
-| | Akses taman / alun-alun berundak tanpa jalur kursi roda | `0.91` | `+0.02` | `0.95` |
-| **Gedung Layanan (`public_service`)** | Pintu masuk gedung tanpa ramp kursi roda / hanya tangga tinggi | `0.95` | `+0.03` | `0.95` |
-| | Toilet khusus disabilitas tidak tersedia, terkunci, atau rusak | `0.93` | `0.00` | `0.95` |
-| | Loket pelayanan / koridor gedung terlalu sempit atau tinggi | `0.90` | `-0.02` | `0.90` |
-| | Tangga / selasar gedung tanpa pegangan rambat (handrail) | `0.87` | `+0.05` | `0.98` |
-| | Lantai selasar licin, berundak tajam, atau tanpa penanda tunanetra | `0.89` | `+0.05` | `1.00` |
-| | Area parkir khusus disabilitas tidak ada atau terhalang | `0.84` | `-0.02` | `0.82` |
-| **Transportasi (`transit`)** | Halte / peron terlalu tinggi tanpa ramp naik-turun kursi roda | `0.95` | `+0.04` | `0.98` |
-| | Penyeberangan jalan (zebra cross) tanpa ramp atau sinyal suara | `0.93` | `+0.07` | `0.96` |
-| | Jembatan penyeberangan / akses stasiun terlalu curam | `0.92` | `+0.04` | `0.96` |
-| | Jalur pemandu (guiding block) menuju halte/stasiun/terminal terputus | `0.91` | `+0.03` | `1.00` |
-| | Titik turun-naik penumpang terhalang parkir liar / hambatan fisik | `0.86` | `+0.04` | `0.85` |
-| | Minim penerangan & rambu informasi rute tidak ramah tunanetra | `0.88` | `+0.05` | `0.92` |
-| **Permukiman (`residential`)** | Jalan lingkungan / gang permukiman berlubang parah atau amblas | `0.83` | `+0.05` | `1.06` |
-| | Saluran air / gorong-gorong permukiman terbuka tanpa penutup | `0.85` | `+0.07` | `1.05` |
-| | Tanjakan jalan gang terlalu curam atau licin tanpa pengaman tepi | `0.88` | `+0.06` | `1.00` |
-| | Akses kursi roda & lansia di gang terhalang portal sempit / material | `0.91` | `+0.01` | `0.85` |
-| | Permukaan paving / beton jalan warga pecah & bergelombang | `0.82` | `+0.03` | `1.04` |
-| | Jalur warga minim penerangan & tanpa pembatas tepi rawan jatuh | `0.80` | `+0.06` | `0.94` |
-| **Semua Kategori (Input Manual)** | **Pengaduan lain** *(teks manual bebas)* | **`0.88`** | **`+0.03`** | **`1.00`** |
+| Kategori | Cakupan | Contoh Jenis Gangguan / Hambatan | `c2BaseAccess` | `c1SafetyBoost` | `c4PhysicalScale` |
+| :--- | :---: | :--- | :---: | :---: | :---: |
+| **Jalan Raya & Lalu Lintas (`transit`)** | Umum | Lampu lalu lintas (APILL) mati, berkedip error, atau tidak sinkron | `0.88` | `+0.08` | `1.04` |
+| | Umum | Rambu lalu lintas rusak, roboh, hilang, atau tertutup pohon | `0.82` | `+0.06` | `0.96` |
+| | Umum | Lampu penerangan jalan umum (PJU) mati / ruas jalan gelap gulita | `0.84` | `+0.06` | `0.98` |
+| | Umum | Jalan raya berlubang dalam, bergelombang parah, atau aspal amblas | `0.89` | `+0.08` | `1.08` |
+| | Umum | Pohon tumbang / dahan rawan patah atau kabel/tiang melintang di jalan | `0.90` | `+0.08` | `1.05` |
+| | Umum | Pagar pengaman jalan (guardrail), jembatan, atau cermin tikungan rusak | `0.83` | `+0.07` | `1.04` |
+| | Umum | Marka jalan, garis lajur, atau zebra cross pudar tidak terlihat | `0.78` | `+0.04` | `0.92` |
+| | Umum | Genangan banjir di badan jalan akibat drainase tepi jalan tersumbat | `0.86` | `+0.05` | `1.02` |
+| | Inklusif | Penyeberangan jalan tanpa ramp trotoar atau sinyal suara | `0.93` | `+0.07` | `0.96` |
+| | Inklusif | Halte / peron terlalu tinggi tanpa ramp naik-turun kursi roda | `0.95` | `+0.04` | `0.98` |
+| **Ruang Publik (`public_space`)** | Umum | Trotoar rusak, berlubang, atau amblas | `0.86` | `+0.05` | `1.05` |
+| | Umum | Lubang drainase / penutup selokan terbuka di jalur pejalan kaki | `0.90` | `+0.08` | `1.06` |
+| | Umum | Lampu taman, alun-alun, atau penerangan trotoar mati malam hari | `0.81` | `+0.05` | `0.95` |
+| | Umum | Pohon miring / dahan kering lapuk rawan tumbang di ruang publik | `0.82` | `+0.07` | `1.00` |
+| | Umum | Fasilitas taman rusak (bangku, alat bermain anak, pagar, tempat sampah) | `0.76` | `+0.02` | `0.98` |
+| | Inklusif | Guiding block (pemandu tunanetra) terputus / mengelupas | `0.92` | `+0.03` | `1.00` |
+| | Inklusif | Ramp trotoar tidak ada atau terlalu curam | `0.94` | `+0.03` | `1.00` |
+| **Gedung Layanan (`public_service`)** | Umum | Atap bocor parah, plafon ambrol, atau struktur gedung retak membahayakan | `0.86` | `+0.08` | `1.08` |
+| | Umum | Instalasi listrik membahayakan, lampu layanan mati, atau air terhenti | `0.84` | `+0.06` | `1.02` |
+| | Umum | Toilet umum / sanitasi fasilitas publik rusak atau tidak layak pakai | `0.82` | `+0.01` | `0.96` |
+| | Umum | Jalur evakuasi darurat, APAR, atau rambu keselamatan gedung rusak | `0.84` | `+0.07` | `0.95` |
+| | Inklusif | Pintu masuk gedung tanpa ramp kursi roda / hanya tangga tinggi | `0.95` | `+0.03` | `0.95` |
+| | Inklusif | Toilet khusus disabilitas tidak tersedia, terkunci, atau rusak | `0.93` | `0.00` | `0.95` |
+| **Permukiman (`residential`)** | Umum | Jembatan kecil lingkungan / gorong-gorong desa retak atau ambrol | `0.91` | `+0.08` | `1.08` |
+| | Umum | Talud / tebing penahan tanah jalan warga retak atau longsor | `0.88` | `+0.08` | `1.08` |
+| | Umum | Lampu penerangan jalan lingkungan (PJL) mati / gang gelap rawan | `0.80` | `+0.05` | `0.95` |
+| | Umum | Tiang listrik / telepon miring atau kabel menjuntai rendah di jalan warga | `0.84` | `+0.07` | `1.02` |
+| | Umum | Cermin tikungan (convex mirror) atau pembatas tepi sungai/jurang rusak | `0.81` | `+0.06` | `0.96` |
+| | Inklusif | Tanjakan jalan gang terlalu curam atau licin tanpa pengaman tepi | `0.88` | `+0.06` | `1.00` |
+| **Lainnya (`other`)** | Umum | Kerusakan tanggul sungai, pintu air irigasi, atau jembatan warga | `0.88` | `+0.08` | `1.08` |
+| | Umum | Rambu peringatan bahaya / keselamatan kawasan publik hilang/rusak | `0.82` | `+0.06` | `0.96` |
+| **Semua Kategori (Manual)** | Umum | **Pengaduan lain** *(teks manual bebas)* | **`0.86`** | **`+0.03`** | **`1.00`** |
 
 #### C. Rumus Pembentukan Nilai Mentah Kriteria ($x_{ij}$)
 1. **Jangkar Tingkat Keparahan (`severity`)**:
-   - `mild` (*Ringan*): `safetyBase = 0.35`, `accessDelta = -0.14`, `physicalBase = 0.35`
+   - `mild` (*Ringan*): `safetyBase = 0.36`, `accessDelta = -0.14`, `physicalBase = 0.36`
    - `moderate` (*Sedang*): `safetyBase = 0.60`, `accessDelta = -0.06`, `physicalBase = 0.60`
-   - `severe` (*Berat*): `safetyBase = 0.82`, `accessDelta = +0.01`, `physicalBase = 0.80`
-   - `critical` (*Sangat Berat*): `safetyBase = 0.92`, `accessDelta = +0.04`, `physicalBase = 0.90`
+   - `severe` (*Berat*): `safetyBase = 0.80`, `accessDelta = +0.01`, `physicalBase = 0.80`
+   - `critical` (*Sangat Berat*): `safetyBase = 0.90`, `accessDelta = +0.04`, `physicalBase = 0.90`
 
 2. **Pengali Kategori Fasilitas (`facilityMultiplier`)**:
-   - `public_space = 0.90`
-   - `transit = 0.88`
-   - `public_service = 0.85`
-   - `residential = 0.65`
-   - `other = 0.55`
+   - `transit = 0.92` *(jalan raya utama, simpang APILL, rambu & transportasi)*
+   - `public_space = 0.90` *(trotoar kota, taman & alun-alun)*
+   - `public_service = 0.86` *(puskesmas, sekolah, pasar, kantor layanan)*
+   - `other = 0.72` *(infrastruktur publik lainnya)*
+   - `residential = 0.68` *(jalan lingkungan & kawasan permukiman)*
 
-3. **Persamaan Empat Kriteria Mentah** (dibulatkan 3 desimal dengan fungsi pembatas $\text{clamp}(v, \min, \max)$):
+3. **Bonus Kerentanan Inklusif (`vulnerabilityBonus`)**:
+   - Setiap kelompok rentan yang terdampak (`Penyandang disabilitas`, `Lansia`, `Anak-anak`, `Kelompok rentan lainnya`) menambah `+0.012` pada $C_2$ dengan batas maksimum `+0.030`.
+
+4. **Persamaan Empat Kriteria Mentah** (dibulatkan 3 desimal dengan fungsi pembatas $\text{clamp}(v, \min, \max)$):
    $$x_{i1} \; (C_1) = \text{clamp}\big(\text{safetyBase} + \text{c1SafetyBoost},\; 0.30,\; 0.98\big)$$
-   $$x_{i2} \; (C_2) = \text{clamp}\big(\text{c2BaseAccess} + \text{accessDelta},\; 0.45,\; 0.98\big)$$
-   $$\text{groupWeight} = \min\big(1.0,\; 0.40 + 0.15 \times N_{\text{kelompok}}\big)$$
-   $$x_{i3} \; (C_3) = \text{clamp}\big(0.60 \times \text{facilityMultiplier} + 0.40 \times \text{groupWeight},\; 0.40,\; 0.98\big)$$
-   $$x_{i4} \; (C_4) = \text{clamp}\big(\text{physicalBase} \times \text{c4PhysicalScale},\; 0.28,\; 0.96\big)$$
+   $$x_{i2} \; (C_2) = \text{clamp}\big(\text{c2BaseAccess} + \text{accessDelta} + \text{vulnerabilityBonus},\; 0.45,\; 0.98\big)$$
+   $$\text{groupWeight} = \min\big(1.0,\; 0.42 + 0.12 \times N_{\text{kelompok}}\big)$$
+   $$x_{i3} \; (C_3) = \text{clamp}\big(0.62 \times \text{facilityMultiplier} + 0.38 \times \text{groupWeight},\; 0.40,\; 0.98\big)$$
+   $$x_{i4} \; (C_4) = \text{clamp}\big(\text{physicalBase} \times \text{c4PhysicalScale},\; 0.28,\; 0.98\big)$$
 
 #### D. Normalisasi Matriks & Perhitungan Skor Preferensi Akhir ($V_i$)
-Saat sekumpulan laporan $A_1, A_2, \dots, A_m$ diperingkat oleh `rankReportsBySaw(reports)`:
-1. Sistem mencari nilai maksimum teramati untuk setiap kolom kriteria $j \in \{1, 2, 3, 4\}$ di antara seluruh laporan aktif:
-   $$x_j^{\max} = \max\big(\max_{1 \le i \le m} x_{ij},\; 0.1\big)$$
-2. Setiap elemen matriks dinormalisasi menggunakan rumus kriteria *Benefit*:
+Saat sekumpulan laporan $A_1, A_2, \dots, A_m$ diperingkat oleh `rankReportsBySaw(reports)` maupun dihitung secara mandiri oleh `computeSawScore(criteria)`:
+1. Sistem menentukan pembagi maksimum tiap kriteria menggunakan jangkar batas atas domain `SAW_REFERENCE_MAX = 0.98`:
+   $$x_j^{\max} = \max\big(\max_{1 \le i \le m} x_{ij},\; 0.98\big)$$
+2. Setiap elemen matriks keputusan dinormalisasi menggunakan persamaan kriteria *Benefit*:
    $$r_{ij} = \frac{x_{ij}}{x_j^{\max}}$$
-3. Nilai preferensi akhir $V_i$ (`totalSaw`) dihitung sebagai:
+3. Nilai preferensi akhir $V_i$ (`totalSaw`) dihitung melalui penjumlahan terbobot:
    $$V_i = (0.35 \cdot r_{i1}) + (0.30 \cdot r_{i2}) + (0.25 \cdot r_{i3}) + (0.10 \cdot r_{i4})$$
 4. Seluruh laporan diurutkan menurun berdasarkan $V_i$, diberi atribut `rank = 1, 2, ..., m`, dan dikonversi ke skala tampilan `0–100` melalui `toScore100(V_i) = Math.round(V_i * 100)`.
+
+#### E. Penanganan Kasus Laporan Tunggal ($m = 1$) & Pencegahan Inflasi Skor `100/100`
+1. **Mengapa Rumus SAW Murni (*Textbook SAW*) Menghasilkan `100/100` Saat Hanya Ada 1 Laporan?**
+   Dalam literatur SPK *Simple Additive Weighting* klasik, normalisasi kriteria *Benefit* murni membagi nilai alternatif dengan nilai tertinggi di antara kandidat yang sedang dibandingkan saat itu:
+   $$r_{ij}^{\text{murni}} = \frac{x_{ij}}{\max_{1 \le i \le m} x_{ij}}$$
+   Apabila di dalam basis data (atau pada filter perangkat warga) **hanya terdapat 1 laporan ($m = 1$)**, maka laporan tersebut otomatis menjadi nilai tertinggi bagi dirinya sendiri pada seluruh kriteria ($\max x_{ij} = x_{1j}$):
+   $$r_{11} = \frac{x_{11}}{x_{11}} = 1, \quad r_{12} = \frac{x_{12}}{x_{12}} = 1, \quad r_{13} = \frac{x_{13}}{x_{13}} = 1, \quad r_{14} = \frac{x_{14}}{x_{14}} = 1$$
+   Karena total bobot keempat kriteria berjumlah $0.35 + 0.30 + 0.25 + 0.10 = 1.00$, maka nilai akhirnya selalu:
+   $$V_1^{\text{murni}} = 0.35(1) + 0.30(1) + 0.25(1) + 0.10(1) = 1.000 \implies \mathbf{100/100}$$
+   Akibatnya, pada SAW murni, **1 laporan kerusakan ringan sekalipun** (misalnya *cat marka agak pudar* atau *bangku taman lecet ringan*) akan tampil dengan skor **`100/100`**.
+
+2. **Mengapa Pendekatan Relatif Murni Tidak Cocok untuk Sistem Pengaduan Publik *Real-Time*?**
+   - Rumus SAW murni dirancang untuk **seleksi batch tertutup (*closed static batch*)**, contohnya menyeleksi 50 kandidat penerima bantuan sekaligus setelah pendaftaran ditutup.
+   - Sebaliknya, **SUARA RUANG** merupakan **antrean laporan dinamis (*open streaming queue*)** di mana laporan masyarakat masuk satu per satu secara *real-time* dari berbagai kecamatan.
+   - Pada Dashboard Pengawas DPUPR (`AdminPortal.tsx`), ambang batas **Tiket Kritis** ditetapkan pada `severity === 'critical' || totalSaw >= 0.85` (`>= 85/100`). Jika laporan tunggal berstatus *Ringan* terinflasi menjadi `100/100`, sistem akan keliru menandainya sebagai insiden darurat kritis.
+
+3. **Solusi Kalibrasi SUARA RUANG (`SAW_REFERENCE_MAX = 0.98`)**
+   Untuk menjaga keakuratan makna skor sejak laporan pertama ($m = 1$) tanpa mengubah sifat matematis pemeringkatan SAW, sistem mengikat pembagi minimum normalisasi pada plafon skala kriteria mentah (`SAW_REFERENCE_MAX = { c1: 0.98, c2: 0.98, c3: 0.98, c4: 0.98 }`):
+   - **Konsistensi Urutan Peringkat (*Order-Preserving*)**: Karena setiap kolom kriteria $j$ dibagi oleh konstanta referensi seragam ($0.98$, atau $\max_i x_{ij}$ jika melebihi $0.98$), urutan prioritas antar-laporan tetap 100% identik dan objektif sesuai bobot $W = [0.35, 0.30, 0.25, 0.10]$.
+   - **Stabilitas Lintas Waktu**: Skor sebuah laporan tidak melonjak atau anjlok drastis hanya karena jumlah laporan di database sedang sedikit (misalnya saat awal peluncuran sistem atau setelah penghapusan tiket uji coba).
+
+4. **Perbandingan Skor Saat Hanya Terdapat 1 Laporan ($m = 1$)**
+   Sebagai ilustrasi konkret, apabila di sistem **hanya ada 1 laporan** berupa *Fasilitas bangku taman rusak ringan* ($C_1=0.380, C_2=0.620, C_3=0.763, C_4=0.353$):
+   - **SAW Murni Tanpa Acuan Domain**: $V_1 = 0.35(1) + 0.30(1) + 0.25(1) + 0.10(1) = \mathbf{1.000}$ (**`100/100`** — *terinflasi palsu seolah kritis*).
+   - **SAW Terkalibrasi SUARA RUANG (`SAW_REFERENCE_MAX = 0.98`)**: $V_1 = 0.35(0.388) + 0.30(0.633) + 0.25(0.779) + 0.10(0.360) = \mathbf{0.556}$ (**`56/100`** — *proporsional sebagai laporan ringan*).
+
+   | Tingkat Keparahan Laporan | Rentang Skor Prioritas Saat Hanya 1 Laporan ($m = 1$) | Interpretasi Operasional Dinas PUPR |
+   | :--- | :---: | :--- |
+   | **Ringan (`mild`)** | **`~48 – 58 / 100`** | Pemeliharaan rutin terjadwal |
+   | **Sedang (`moderate`)** | **`~64 – 74 / 100`** | Perlu penanganan terencana menengah |
+   | **Berat (`severe`)** | **`~78 – 89 / 100`** | Prioritas tinggi / verifikasi lapangan segera |
+   | **Sangat Berat (`critical`)** | **`~88 – 98 / 100`** | Darurat / Tiket Kritis utama ($\ge 85/100$) |
 
 ---
 
 ### 4.2 Simulasi Matematis Perhitungan Skor Prioritas
 
-Misalkan terdapat **2 laporan warga** yang masuk ke sistem:
-- **Laporan A (`#KBM-2026-1001`)**:
+Misalkan terdapat **3 laporan warga** dengan karakteristik berbeda yang masuk ke sistem:
+- **Laporan A (`#KBM-2026-1001` — Darurat Lalu Lintas Umum)**:
+  - Kategori: `transit` (`facilityMultiplier = 0.92`)
+  - Gangguan: *Lampu lalu lintas (APILL) mati di persimpangan utama* (`c2BaseAccess = 0.88`, `c1SafetyBoost = +0.08`, `c4PhysicalScale = 1.04`)
+  - Keparahan: `critical` (`safetyBase = 0.90`, `accessDelta = +0.04`, `physicalBase = 0.90`)
+  - Kelompok Terdampak: Pengendara, Pejalan kaki, Masyarakat umum ($N = 3$, kelompok rentan = $0$)
+- **Laporan B (`#KBM-2026-1002` — Aksesibilitas Difabel Kritis)**:
+  - Kategori: `public_service` (`facilityMultiplier = 0.86`)
+  - Gangguan: *Pintu masuk gedung layanan tanpa ramp kursi roda* (`c2BaseAccess = 0.95`, `c1SafetyBoost = +0.03`, `c4PhysicalScale = 0.95`)
+  - Keparahan: `critical` (`safetyBase = 0.90`, `accessDelta = +0.04`, `physicalBase = 0.90`)
+  - Kelompok Terdampak: Penyandang disabilitas, Lansia ($N = 2$, kelompok rentan = $2 \implies \text{vulnerabilityBonus} = +0.024$)
+- **Laporan C (`#KBM-2026-1003` — Gangguan Fasilitas Taman Ringan)**:
   - Kategori: `public_space` (`facilityMultiplier = 0.90`)
-  - Hambatan: *Lubang drainase / penutup selokan terbuka* (`c2BaseAccess = 0.88`, `c1SafetyBoost = +0.07`, `c4PhysicalScale = 1.06`)
-  - Keparahan: `critical` (`safetyBase = 0.92`, `accessDelta = +0.04`, `physicalBase = 0.90`)
-  - Kelompok Terdampak: 3 kelompok — Disabilitas, Lansia, Anak-anak ($N = 3$)
-- **Laporan B (`#KBM-2026-1002`)**:
-  - Kategori: `public_service` (`facilityMultiplier = 0.85`)
-  - Hambatan: **Pengaduan lain** *(input manual: "Papan informasi ruang tunggu kurang jelas")* $\rightarrow$ menggunakan `CUSTOM_OBSTACLE_CONFIG` (`c2BaseAccess = 0.88`, `c1SafetyBoost = +0.03`, `c4PhysicalScale = 1.00`)
-  - Keparahan: `moderate` (`safetyBase = 0.60`, `accessDelta = -0.06`, `physicalBase = 0.60`)
-  - Kelompok Terdampak: 2 kelompok — Disabilitas, Lansia ($N = 2$)
+  - Gangguan: *Fasilitas bangku taman rusak ringan* (`c2BaseAccess = 0.76`, `c1SafetyBoost = +0.02`, `c4PhysicalScale = 0.98`)
+  - Keparahan: `mild` (`safetyBase = 0.36`, `accessDelta = -0.14`, `physicalBase = 0.36`)
+  - Kelompok Terdampak: Masyarakat umum ($N = 1$, kelompok rentan = $0$)
 
-**Langkah 1 — Hitung Nilai Kriteria Mentah ($x_{ij}$):**
-- **Laporan A**:
-  - $C_1 = \text{clamp}(0.92 + 0.07, 0.30, 0.98) = \mathbf{0.980}$
-  - $C_2 = \text{clamp}(0.88 + 0.04, 0.45, 0.98) = \mathbf{0.920}$
-  - $\text{groupWeight}_A = \min(1.0, 0.40 + 3 \times 0.15) = 0.85 \implies C_3 = (0.60 \times 0.90) + (0.40 \times 0.85) = 0.54 + 0.34 = \mathbf{0.880}$
-  - $C_4 = \text{clamp}(0.90 \times 1.06, 0.28, 0.96) = \mathbf{0.954}$
-- **Laporan B**:
-  - $C_1 = \text{clamp}(0.60 + 0.03, 0.30, 0.98) = \mathbf{0.630}$
-  - $C_2 = \text{clamp}(0.88 - 0.06, 0.45, 0.98) = \mathbf{0.820}$
-  - $\text{groupWeight}_B = \min(1.0, 0.40 + 2 \times 0.15) = 0.70 \implies C_3 = (0.60 \times 0.85) + (0.40 \times 0.70) = 0.51 + 0.28 = \mathbf{0.790}$
-  - $C_4 = \text{clamp}(0.60 \times 1.00, 0.28, 0.96) = \mathbf{0.600}$
-
-**Langkah 2 — Tentukan Nilai Maksimum per Kriteria ($x_j^{\max}$):**
-- $x_1^{\max} = 0.980$, $\; x_2^{\max} = 0.920$, $\; x_3^{\max} = 0.880$, $\; x_4^{\max} = 0.954$
-
-**Langkah 3 — Normalisasi ($r_{ij}$) & Penjumlahan Terbobot ($V_i$):**
-- **Laporan A**: $r_{A} = [1.000, 1.000, 1.000, 1.000] \implies V_A = 0.35(1) + 0.30(1) + 0.25(1) + 0.10(1) = \mathbf{1.000}$ $\rightarrow$ **Skor Prioritas = `100/100` (Peringkat #1)**
-- **Laporan B**:
-  - $r_{B1} = 0.630 / 0.980 = 0.6429$
-  - $r_{B2} = 0.820 / 0.920 = 0.8913$
-  - $r_{B3} = 0.790 / 0.880 = 0.8977$
-  - $r_{B4} = 0.600 / 0.954 = 0.6289$
-  - $V_B = (0.35 \times 0.6429) + (0.30 \times 0.8913) + (0.25 \times 0.8977) + (0.10 \times 0.6289) = 0.2250 + 0.2674 + 0.2244 + 0.0629 = \mathbf{0.780}$ $\rightarrow$ **Skor Prioritas = `78/100` (Peringkat #2)**
+**Hasil Perhitungan Kriteria Mentah ($x_{ij}$) & Skor Akhir ($V_i$ dengan $x_j^{\max} = 0.98$):**
+- **Laporan A (Lampu Lalu Lintas Mati — Kritis)**:
+  - $C_1 = 0.980, \; C_2 = 0.920, \; C_3 = 0.867, \; C_4 = 0.936$
+  - $V_A = 0.35(1.000) + 0.30(0.939) + 0.25(0.885) + 0.10(0.955) = \mathbf{0.948}$ $\rightarrow$ **Skor Prioritas = `95/100` (Peringkat #1 — Kritis)**
+- **Laporan B (Tanpa Ramp Kursi Roda — Kritis)**:
+  - $C_1 = 0.930, \; C_2 = 0.980, \; C_3 = 0.784, \; C_4 = 0.855$
+  - $V_B = 0.35(0.949) + 0.30(1.000) + 0.25(0.800) + 0.10(0.872) = \mathbf{0.919}$ $\rightarrow$ **Skor Prioritas = `92/100` (Peringkat #2 — Kritis)**
+- **Laporan C (Bangku Taman Rusak — Ringan)**:
+  - $C_1 = 0.380, \; C_2 = 0.620, \; C_3 = 0.763, \; C_4 = 0.353$
+  - $V_C = 0.35(0.388) + 0.30(0.633) + 0.25(0.779) + 0.10(0.360) = \mathbf{0.556}$ $\rightarrow$ **Skor Prioritas = `56/100` (Peringkat #3 — Ringan)**
 
 ---
 
@@ -397,6 +429,8 @@ Diimplementasikan pada `src/services/reportService.ts`:
     - Jika terhubung ke MongoDB (`syncedWithMongo === true`), server menjadi sumber otoritatif utama, namun mutasi lokal yang baru saja terjadi dalam `< 30 detik` terakhir dengan bobot status $\ge$ server tetap dipertahankan agar tidak terjadi *flicker* status mundur sesaat setelah Admin menekan tombol.
     - Jika server berjalan dalam mode cadangan lokal (`syncedWithMongo === false`), sistem memilih versi dengan `updatedAt` atau bobot status yang lebih maju.
     - Atribut foto (`photoBefore`, `photoDuring`, `photoAfter`) digabungkan secara komplementer (`base || server || local`) sehingga foto yang sempat dipangkas dari `localStorage` karena batas kuota otomatis dipulihkan dari respons server.
+- **Rekalkulasi Otomatis Skor SAW pada Cache Lama (`normalizeReportsList`)**:
+  - Setiap kali data dibaca dari server maupun dipulihkan dari `localStorage` (`suara_ruang_my_device_reports_v1` dan `suara_ruang_public_reports_cache_v1`), fungsi `normalizeReportsList` dan `mergeReportVersions` menghitung ulang `totalSaw` menggunakan `computeSawScore(sawScores, SAW_REFERENCE_MAX)`. Mekanisme ini memastikan laporan tunggal lama yang sebelumnya sempat tersimpan di cache peramban dengan nilai `100/100` otomatis terkoreksi ke skor proporsionalnya tanpa perlu membuat ulang laporan.
 
 ---
 

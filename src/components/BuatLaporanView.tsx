@@ -15,6 +15,8 @@ import { getOrCreateDeviceId } from '../services/reportService';
 import {
   CATEGORY_LABELS,
   CATEGORY_OBSTACLE_OPTIONS,
+  ObstacleOptionConfig,
+  ObstacleScope,
   calculateRawCriteria,
   computeSawScore,
 } from '../utils/sawCalculator';
@@ -64,22 +66,55 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const mapSectionRef = useRef<HTMLDivElement>(null);
   const reverseGeoAbortRef = useRef<AbortController | null>(null);
 
-  const [category, setCategory] = useState<FacilityCategory>('public_space');
+  const [category, setCategory] = useState<FacilityCategory>('transit');
+  const [obstacleScopeFilter, setObstacleScopeFilter] = useState<'all' | ObstacleScope>('all');
   const [obstacleType, setObstacleType] = useState(
-    CATEGORY_OBSTACLE_OPTIONS.public_space[0].label
+    CATEGORY_OBSTACLE_OPTIONS.transit[0].label
   );
   const [isCustomObstacle, setIsCustomObstacle] = useState(false);
   const [customObstacleText, setCustomObstacleText] = useState('');
   const customObstacleInputRef = useRef<HTMLInputElement>(null);
 
   const [severity, setSeverity] = useState<SeverityLevel>('severe');
-  const [impactedGroups, setImpactedGroups] = useState<string[]>(['Penyandang disabilitas']);
+  const [impactedGroups, setImpactedGroups] = useState<string[]>(
+    CATEGORY_OBSTACLE_OPTIONS.transit[0].defaultGroups || [
+      'Pengendara / pengguna jalan',
+      'Masyarakat umum',
+    ]
+  );
+  const [hasCustomizedGroups, setHasCustomizedGroups] = useState(false);
+
+  const applyObstacleSelection = (opt: ObstacleOptionConfig) => {
+    setIsCustomObstacle(false);
+    setObstacleType(opt.label);
+    if (!hasCustomizedGroups && opt.defaultGroups && opt.defaultGroups.length > 0) {
+      setImpactedGroups(opt.defaultGroups);
+    }
+  };
 
   const handleCategoryChange = (nextCategory: FacilityCategory) => {
     setCategory(nextCategory);
     const nextOptions = CATEGORY_OBSTACLE_OPTIONS[nextCategory] || [];
-    if (nextOptions.length > 0 && !nextOptions.some(opt => opt.label === obstacleType)) {
-      setObstacleType(nextOptions[0].label);
+    const filteredNext =
+      obstacleScopeFilter === 'all'
+        ? nextOptions
+        : nextOptions.filter(opt => opt.scope === obstacleScopeFilter);
+    const pool = filteredNext.length > 0 ? filteredNext : nextOptions;
+    if (pool.length > 0 && !pool.some(opt => opt.label === obstacleType)) {
+      applyObstacleSelection(pool[0]);
+    }
+  };
+
+  const handleScopeFilterChange = (nextScope: 'all' | ObstacleScope) => {
+    setObstacleScopeFilter(nextScope);
+    if (isCustomObstacle) return;
+    const categoryOptions = CATEGORY_OBSTACLE_OPTIONS[category] || [];
+    const filtered =
+      nextScope === 'all'
+        ? categoryOptions
+        : categoryOptions.filter(opt => opt.scope === nextScope);
+    if (filtered.length > 0 && !filtered.some(opt => opt.label === obstacleType)) {
+      applyObstacleSelection(filtered[0]);
     }
   };
 
@@ -291,6 +326,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
   const currentStep = !step1Done ? 1 : !step3Done ? 2 : 3;
 
   const toggleImpactedGroup = (group: string) => {
+    setHasCustomizedGroups(true);
     if (impactedGroups.includes(group)) {
       if (impactedGroups.length > 1) {
         setImpactedGroups(impactedGroups.filter(g => g !== group));
@@ -376,7 +412,8 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
       category,
       impactedGroups.length,
       finalObstacle,
-      isCustomObstacle
+      isCustomObstacle,
+      impactedGroups
     );
     const totalSaw = computeSawScore(rawCriteria);
 
@@ -523,7 +560,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </span>
           </div>
           <span className="text-[11px] font-bold text-[#006496] bg-white px-2 py-0.5 rounded-md border border-[#eaedff]">
-            Formulir Aksesibilitas
+            Formulir Pengaduan Publik
           </span>
         </div>
 
@@ -544,7 +581,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
 
         <div className="flex justify-between items-center text-[10px] text-[#42474f] font-bold mt-1.5 px-0.5">
           <span className="text-[#00355f]">1. Lokasi</span>
-          <span className={step1Done ? 'text-[#00355f]' : ''}>2. Hambatan</span>
+          <span className={step1Done ? 'text-[#00355f]' : ''}>2. Jenis Gangguan</span>
           <span className={step3Done ? 'text-[#00355f]' : ''}>3. Bukti & Keterangan</span>
         </div>
       </section>
@@ -1058,32 +1095,58 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
           </div>
         </fieldset>
 
-        {/* ================= BAGIAN 2: INFORMASI HAMBATAN ================= */}
+        {/* ================= BAGIAN 2: INFORMASI GANGGUAN & HAMBATAN ================= */}
         <fieldset className="space-y-4 p-4 rounded-2xl bg-white shadow-xs border border-[#eaedff]">
           <div className="flex items-center justify-between">
             <legend className="text-[15px] font-bold text-[#131b2e] flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-[#d2e4ff] text-[#001c37] flex items-center justify-center text-xs font-bold">
                 2
               </span>
-              Informasi Hambatan
+              Informasi Gangguan & Hambatan
             </legend>
             <span className="text-[10px] font-bold text-[#00355f] flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px]">checklist</span>
-              Tingkat Dampak
+              Umum & Inklusif
             </span>
           </div>
 
           {/* Sub-bagian A: Kategori Ruang */}
           <div className="space-y-2">
             <label className="block text-[12px] font-bold text-[#131b2e]">
-              A. Kategori Ruang atau Fasilitas <span className="text-[#ba1a1a]">*</span>
+              A. Kategori Ruang atau Infrastruktur <span className="text-[#ba1a1a]">*</span>
             </label>
             <div className="space-y-1.5">
               {[
-                { id: 'public_space', label: 'Ruang publik dan ruang terbuka', icon: 'park' },
-                { id: 'public_service', label: 'Fasilitas umum dan pelayanan dasar', icon: 'domain' },
-                { id: 'transit', label: 'Transportasi dan konektivitas', icon: 'directions_bus' },
-                { id: 'residential', label: 'Kawasan permukiman', icon: 'home' },
+                {
+                  id: 'transit',
+                  label: 'Jalan raya, lalu lintas & transportasi',
+                  sub: 'Lampu lalu lintas (APILL), rambu jalan, PJU mati, jalan berlubang, halte',
+                  icon: 'traffic',
+                },
+                {
+                  id: 'public_space',
+                  label: 'Ruang publik, taman & jalur pejalan kaki',
+                  sub: 'Trotoar, drainase terbuka, lampu taman, pohon rawan tumbang, guiding block',
+                  icon: 'park',
+                },
+                {
+                  id: 'public_service',
+                  label: 'Gedung layanan & fasilitas umum',
+                  sub: 'Puskesmas, sekolah, pasar, toilet umum, listrik/air layanan, ramp gedung',
+                  icon: 'domain',
+                },
+                {
+                  id: 'residential',
+                  label: 'Jalan lingkungan & kawasan permukiman',
+                  sub: 'Jalan gang, jembatan desa, talud longsor, lampu gang, kabel menjuntai',
+                  icon: 'home',
+                },
+                {
+                  id: 'other',
+                  label: 'Infrastruktur & fasilitas publik lainnya',
+                  sub: 'Tanggul sungai, pintu air, rambu bahaya kawasan, sarana olahraga/wisata',
+                  icon: 'construction',
+                },
               ].map(opt => {
                 const isSelected = category === opt.id;
                 return (
@@ -1091,9 +1154,9 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                     key={opt.id}
                     type="button"
                     onClick={() => handleCategoryChange(opt.id as FacilityCategory)}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
+                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left gap-2 ${
                       isSelected
-                        ? 'bg-[#d2e4ff] text-[#001c37] border border-[#00355f]/20 font-bold'
+                        ? 'bg-[#d2e4ff] text-[#001c37] border border-[#00355f]/20'
                         : 'bg-[#f2f3ff] text-[#131b2e] hover:bg-[#eaedff]'
                     }`}
                   >
@@ -1107,10 +1170,19 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                           {opt.icon}
                         </span>
                       </div>
-                      <span className="text-[12px] truncate">{opt.label}</span>
+                      <div className="min-w-0">
+                        <span className="text-[12px] font-bold block truncate">{opt.label}</span>
+                        <span
+                          className={`text-[10px] block truncate ${
+                            isSelected ? 'text-[#00355f]' : 'text-[#42474f]'
+                          }`}
+                        >
+                          {opt.sub}
+                        </span>
+                      </div>
                     </div>
                     <span
-                      className={`material-symbols-outlined text-[20px] ${
+                      className={`material-symbols-outlined text-[20px] shrink-0 ${
                         isSelected ? 'text-[#00355f] fill-1' : 'text-[#727780]'
                       }`}
                     >
@@ -1122,29 +1194,57 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </div>
           </div>
 
-          {/* Sub-bagian B: Jenis Hambatan (Dinamis Menyesuaikan Pilihan Kategori A) */}
-          <div className="space-y-2 pt-1">
+          {/* Sub-bagian B: Jenis Gangguan / Hambatan (Dinamis Menyesuaikan Pilihan Kategori A) */}
+          <div className="space-y-2.5 pt-1">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <label className="block text-[12px] font-bold text-[#131b2e]">
-                B. Jenis Hambatan Aksesibilitas <span className="text-[#ba1a1a]">*</span>
+                B. Jenis Gangguan atau Hambatan <span className="text-[#ba1a1a]">*</span>
               </label>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#f2f3ff] text-[#006496]">
                 {CATEGORY_LABELS[category]}
               </span>
             </div>
+
+            {/* Filter Cakupan Gangguan: Semua | Umum & Lalu Lintas | Ramah Difabel */}
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f2f3ff] border border-[#eaedff]">
+              {(
+                [
+                  { id: 'all', label: 'Semua' },
+                  { id: 'umum', label: 'Umum & Jalan' },
+                  { id: 'inklusif', label: 'Ramah Difabel' },
+                ] as const
+              ).map(tab => {
+                const active = obstacleScopeFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => handleScopeFilterChange(tab.id)}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all text-center ${
+                      active
+                        ? 'bg-white text-[#00355f] shadow-xs border border-[#dae2fd]'
+                        : 'text-[#42474f] hover:text-[#131b2e]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="flex flex-wrap gap-1.5">
-              {(CATEGORY_OBSTACLE_OPTIONS[category] || CATEGORY_OBSTACLE_OPTIONS.public_space).map(
-                opt => {
+              {(CATEGORY_OBSTACLE_OPTIONS[category] || CATEGORY_OBSTACLE_OPTIONS.transit)
+                .filter(
+                  opt => obstacleScopeFilter === 'all' || opt.scope === obstacleScopeFilter
+                )
+                .map(opt => {
                   const isSelected = !isCustomObstacle && obstacleType === opt.label;
                   return (
                     <button
                       key={opt.label}
                       type="button"
-                      onClick={() => {
-                        setIsCustomObstacle(false);
-                        setObstacleType(opt.label);
-                      }}
-                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all text-left ${
+                      onClick={() => applyObstacleSelection(opt)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold transition-all text-left leading-snug ${
                         isSelected
                           ? 'bg-[#00355f] text-white shadow-xs'
                           : 'bg-[#eaedff] text-[#131b2e] hover:bg-[#dae2fd]'
@@ -1158,8 +1258,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                       <span>{opt.label}</span>
                     </button>
                   );
-                }
-              )}
+                })}
 
               {/* Opsi Pengaduan Lain (Input Manual) */}
               <button
@@ -1168,7 +1267,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                   setIsCustomObstacle(true);
                   setTimeout(() => customObstacleInputRef.current?.focus(), 50);
                 }}
-                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all text-left ${
+                className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all text-left ${
                   isCustomObstacle
                     ? 'bg-[#00355f] text-white shadow-xs'
                     : 'bg-[#f2f3ff] text-[#00355f] border border-dashed border-[#00355f]/40 hover:bg-[#eaedff]'
@@ -1187,7 +1286,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                   htmlFor="custom-obstacle-input"
                   className="block text-[11px] font-bold text-[#00355f]"
                 >
-                  Tuliskan Pengaduan / Jenis Hambatan Lainnya{' '}
+                  Tuliskan Pengaduan / Jenis Gangguan Lainnya{' '}
                   <span className="text-[#ba1a1a]">*</span>
                 </label>
                 <input
@@ -1198,11 +1297,11 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                   onChange={e => setCustomObstacleText(e.target.value)}
                   required={isCustomObstacle}
                   maxLength={120}
-                  placeholder="Ketik jenis hambatan aksesibilitas yang Anda temui..."
+                  placeholder="Contoh: Lampu peringatan simpang kereta mati / pagar jembatan patah..."
                   className="w-full h-10 px-3.5 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[12px] font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-[#00355f]/25 focus:border-[#00355f] transition-all"
                 />
                 <p className="text-[10px] text-[#42474f]">
-                  Isi secara manual apabila jenis hambatan belum tercantum pada pilihan di atas.
+                  Isi secara manual apabila jenis gangguan belum tercantum pada pilihan di atas.
                 </p>
               </div>
             )}
@@ -1286,10 +1385,12 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
             </label>
             <div className="flex flex-wrap gap-1.5">
               {[
+                'Masyarakat umum',
+                'Pengendara / pengguna jalan',
+                'Pejalan kaki',
                 'Penyandang disabilitas',
                 'Lansia',
                 'Anak-anak',
-                'Masyarakat umum',
                 'Kelompok rentan lainnya',
               ].map(grp => {
                 const isChecked = impactedGroups.includes(grp);
@@ -1423,7 +1524,7 @@ export const BuatLaporanView: React.FC<BuatLaporanViewProps> = ({
                 onChange={e => setNotes(e.target.value)}
                 required
                 className="w-full p-3 pb-12 rounded-xl bg-[#f2f3ff] text-[#131b2e] text-[12px] leading-relaxed focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#00355f] border border-transparent focus:border-[#00355f] transition-all resize-none"
-                placeholder="Jelaskan kondisi kerusakan, ukuran hambatan, atau dampaknya bagi pejalan kaki / disabilitas..."
+                placeholder="Jelaskan kondisi gangguan/kerusakan, patokan titik, atau dampaknya bagi pengguna jalan / warga..."
               />
               <button
                 type="button"

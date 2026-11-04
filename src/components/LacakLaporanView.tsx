@@ -348,7 +348,7 @@ export const LacakLaporanView: React.FC<LacakLaporanViewProps> = ({
               </span>
             </div>
             <div className="flex justify-between text-[#131b2e]">
-              <span>Dampak Aksesibilitas Difabel</span>
+              <span>Dampak Mobilitas & Aksesibilitas</span>
               <span className="font-mono font-bold text-[#006496]">
                 {toScore100(activeReport.sawScores.c2Access)}/100
               </span>

@@ -1570,7 +1570,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                     bar: 'bg-red-600',
                                   },
                                   {
-                                    label: 'Akses Difabel',
+                                    label: 'Akses & Mobilitas',
                                     score: toScore100(rep.sawScores.c2Access),
                                     bar: 'bg-sky-600',
                                   },
@@ -1780,9 +1780,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto">
                     {[
                       { id: 'all', label: 'Semua Fasilitas' },
+                      { id: 'transit', label: 'Jalan & Lalu Lintas' },
                       { id: 'public_space', label: 'Ruang Publik' },
                       { id: 'public_service', label: 'Layanan Umum' },
-                      { id: 'transit', label: 'Transportasi' },
+                      { id: 'residential', label: 'Permukiman' },
+                      { id: 'other', label: 'Lainnya' },
                     ].map(cat => (
                       <button
                         key={cat.id}
